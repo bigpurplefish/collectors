@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.python-version
+.venv
+venv/
+ENV/
+env/
+.pyenv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+*.cover
+*.log
+
+# Project specific
+*.pyc
+.env
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+*.log.*
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output directories (often contain large data files)
+batches/
+output/
+enriched/
+download_images_holding/
+
+# Configuration files that might contain secrets
+*_config.json
+.collection_app.json
+.media_captor_gui.json
+.json_batcher_config.json
+.json_to_excel_converter_config.json
+
+# Catalog files (can be large)
+*_catalog.json
+*_index.json
