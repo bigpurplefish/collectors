@@ -15,7 +15,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-from ttkbootstrap.tooltip import ToolTip
+from ttkbootstrap.widgets import ToolTip
 import threading
 import queue
 from datetime import datetime
@@ -87,6 +87,7 @@ def build_gui():
     # Queues for thread-safe communication
     status_queue = queue.Queue()
     button_control_queue = queue.Queue()
+    messagebox_queue = queue.Queue()  # For thread-safe messagebox calls
 
     # Toolbar
     toolbar = tb.Frame(app)
@@ -628,12 +629,17 @@ def build_gui():
                 status(f"Total: {len(products)}")
                 status("=" * 80)
 
-                messagebox.showinfo("Success", f"Processing complete!\n\n✅ Successful: {success_count}\n❌ Failed: {fail_count}")
+                # Queue messagebox to main thread
+
+
+                messagebox_queue.put(("info", "Success", f"Processing complete!\n\n✅ Successful: {success_count}\n⚠ Skipped: {skip_count}\n❌ Failed: {fail_count}"))
 
             except Exception as e:
                 status(f"\n❌ FATAL ERROR: {str(e)}")
                 logging.exception("Fatal error:")
-                messagebox.showerror("Error", f"Fatal error occurred:\n\n{str(e)}")
+                # Queue error messagebox to main thread
+
+                messagebox_queue.put(("error", "Error", f"Fatal error occurred:\n\n{str(e)}"))
             finally:
                 # ALWAYS re-enable buttons
                 button_control_queue.put("enable_buttons")
@@ -694,7 +700,20 @@ def build_gui():
                 except queue.Empty:
                     break
 
-        except Exception as e:
+            # Process messagebox requests (MUST run in main thread)
+            while True:
+                try:
+                    msg_type, title, message = messagebox_queue.get_nowait()
+                    if msg_type == "info":
+                        messagebox.showinfo(title, message)
+                    elif msg_type == "error":
+                        messagebox.showerror(title, message)
+                    elif msg_type == "warning":
+                        messagebox.showwarning(title, message)
+                except queue.Empty:
+                    break
+
+ except Exception as e:
             logging.error(f"Error processing queues: {e}", exc_info=True)
 
         # Schedule next check (50ms = 20 times per second)
