@@ -146,10 +146,10 @@ def build_gui():
             filename = filedialog.askopenfilename(
                 title="Select Input File",
                 filetypes=[
-                    ("Supported files", "*.json;*.xlsx;*.xlsm"),
                     ("JSON files", "*.json"),
-                    ("Excel files", "*.xlsx;*.xlsm"),
+                    ("Excel files", "*.xlsx *.xlsm"),
                     ("All files", "*.*")
+                ]
                 ]
             )
             if filename:
