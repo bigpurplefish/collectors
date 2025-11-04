@@ -523,11 +523,11 @@ def build_gui():
 
                 # Add shared utilities to path
                 import sys
-                shared_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'shared')
-                if shared_path not in sys.path:
-                    sys.path.insert(0, shared_path)
+                parent_path = os.path.dirname(os.path.dirname(__file__))
+                if parent_path not in sys.path:
+                    sys.path.insert(0, parent_path)
 
-                from src.excel_utils import load_products
+                from shared.src.excel_utils import load_products
                 all_products = load_products(input_file)
 
                 if not isinstance(all_products, list):
