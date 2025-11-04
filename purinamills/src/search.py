@@ -101,7 +101,7 @@ class PurinamillsSearcher:
         """
         try:
             url = f"{self.shop_origin}{self.shop_search_path}?{self.shop_search_param}={quote_plus(query)}"
-            log(f"[PurinaMills] Searching shop site: {query}")
+            log(f"[PurinaMills]   → Searching shop.purinamills.com: '{query}'")
 
             response = http_get(url, timeout=timeout)
             html_text = response.text if hasattr(response, 'text') else str(response)
@@ -146,11 +146,11 @@ class PurinamillsSearcher:
                 if len(candidates) >= self.max_search_candidates:
                     break
 
-            log(f"[PurinaMills] Found {len(candidates)} candidates on shop site")
+            log(f"[PurinaMills]   → Found {len(candidates)} candidate(s) on shop site")
             return candidates
 
         except Exception as e:
-            log(f"[PurinaMills] Shop site search failed for '{query}': {e}")
+            log(f"[PurinaMills]   ✗ Shop site search failed: {e}")
             return []
 
     def _search_www_site(
@@ -168,7 +168,7 @@ class PurinamillsSearcher:
         """
         try:
             url = f"{self.www_origin}{self.www_search_path}?{self.www_search_param}={quote_plus(query)}"
-            log(f"[PurinaMills] Searching www site: {query}")
+            log(f"[PurinaMills]   → Searching www.purinamills.com: '{query}'")
 
             response = http_get(url, timeout=timeout)
             html_text = response.text if hasattr(response, 'text') else str(response)
@@ -211,11 +211,11 @@ class PurinamillsSearcher:
                 if len(candidates) >= self.max_search_candidates:
                     break
 
-            log(f"[PurinaMills] Found {len(candidates)} candidates on www site")
+            log(f"[PurinaMills]   → Found {len(candidates)} candidate(s) on www site")
             return candidates
 
         except Exception as e:
-            log(f"[PurinaMills] WWW site search failed for '{query}': {e}")
+            log(f"[PurinaMills]   ✗ WWW site search failed: {e}")
             return []
 
     def find_product_url(
@@ -261,6 +261,7 @@ class PurinamillsSearcher:
             return ""
 
         # === Strategy 1: Exact match on description_1 (shop site) ===
+        log(f"[PurinaMills] Strategy 1: Searching for exact match with description_1 on shop site")
         if description_1:
             candidates = self._search_shop_site(description_1, http_get, timeout, log)
 
@@ -269,10 +270,11 @@ class PurinamillsSearcher:
             for candidate in candidates:
                 if description_1_lower in candidate["name"].lower() or \
                    candidate["name"].lower() in description_1_lower:
-                    log(f"[PurinaMills] Exact match found: {candidate['url']}")
+                    log(f"[PurinaMills] ✓ Exact match found on shop site: {candidate['url']}")
                     return candidate["url"]
 
         # === Strategy 2: Fuzzy match on description_1 (shop site) ===
+        log(f"[PurinaMills] Strategy 2: Trying fuzzy match with description_1 on shop site")
         if description_1 and candidates:
             query_kw = self._keyword_set(description_1)
             best_score = 0.0
@@ -285,12 +287,14 @@ class PurinamillsSearcher:
                     best_url = candidate["url"]
 
             if best_score >= self.fuzzy_match_threshold:
-                log(f"[PurinaMills] Fuzzy match found (score={best_score:.2f}): {best_url}")
+                log(f"[PurinaMills] ✓ Fuzzy match found on shop site (score={best_score:.2f}): {best_url}")
                 return best_url
+            else:
+                log(f"[PurinaMills] No fuzzy match above threshold (best score: {best_score:.2f}, threshold: {self.fuzzy_match_threshold})")
 
         # === Strategy 3: Try upcitemdb_title on shop site ===
         if upcitemdb_title and upcitemdb_title != description_1:
-            log(f"[PurinaMills] Trying upcitemdb_title: {upcitemdb_title}")
+            log(f"[PurinaMills] Strategy 3: Trying fuzzy match with upcitemdb_title on shop site")
             candidates = self._search_shop_site(upcitemdb_title, http_get, timeout, log)
 
             if candidates:
@@ -305,11 +309,13 @@ class PurinamillsSearcher:
                         best_url = candidate["url"]
 
                 if best_score >= self.fuzzy_match_threshold:
-                    log(f"[PurinaMills] Match found using upcitemdb_title (score={best_score:.2f}): {best_url}")
+                    log(f"[PurinaMills] ✓ Match found on shop site using upcitemdb_title (score={best_score:.2f}): {best_url}")
                     return best_url
+                else:
+                    log(f"[PurinaMills] No match with upcitemdb_title (best score: {best_score:.2f})")
 
         # === Strategy 4: Fallback to www site ===
-        log("[PurinaMills] No match on shop site, trying www site...")
+        log("[PurinaMills] Strategy 4: Falling back to www site")
         www_candidates = []
 
         if description_1:
@@ -331,8 +337,10 @@ class PurinamillsSearcher:
                     best_url = candidate["url"]
 
             if best_score >= self.fuzzy_match_threshold:
-                log(f"[PurinaMills] Match found on www site (score={best_score:.2f}): {best_url}")
+                log(f"[PurinaMills] ✓ Match found on www site (score={best_score:.2f}): {best_url}")
                 return best_url
+            else:
+                log(f"[PurinaMills] No match on www site above threshold (best score: {best_score:.2f})")
 
-        log(f"[PurinaMills] No match found for UPC {upc}")
+        log(f"[PurinaMills] ✗ No match found for UPC {upc} on either site")
         return ""
