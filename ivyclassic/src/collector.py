@@ -12,8 +12,8 @@ from typing import Dict, Any, Optional, Callable
 # Add parent directory to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-catalog import CatalogManager
-parser import IvyclassicParser
+from src.catalog import CatalogManager
+from src.parser import IvyclassicParser
 
 
 # Site Configuration (embedded from profile)

@@ -12,14 +12,14 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import normalize_upc
-text_matching import (
+from src.text_matching import (
     normalize_name,
     extract_canonical_flavors,
     extract_canonical_line,
     extract_form_tokens,
     infer_taxonomy,
 )
-size_matching import extract_sizes, sizes_match
+from src.size_matching import extract_sizes, sizes_match
 
 
 class EthicalSearcher:

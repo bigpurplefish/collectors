@@ -12,8 +12,8 @@ from typing import Dict, Any
 # Add parent directory to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-search import KongSearcher
-parser import KongParser
+from src.search import KongSearcher
+from src.parser import KongParser
 
 
 # Site Configuration (embedded from profile)

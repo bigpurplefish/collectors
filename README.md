@@ -8,9 +8,9 @@ Each collector follows Python best practices with a standard directory structure
 
 ```
 collector_name/
+├── main.py                      # Entry point (at project root)
 ├── src/                         # All source code
 │   ├── __init__.py
-│   ├── main.py                  # Entry point
 │   ├── collector.py             # Main orchestration
 │   ├── search.py                # Product discovery
 │   ├── parser.py                # HTML/data parsing
@@ -84,7 +84,7 @@ cd /Users/moosemarketer/Code/Python/collectors/bradley_caldwell
 python --version  # Should show Python 3.13.0
 
 # Run the collector
-python src/main.py --input input/products.json --output output/enriched.json
+python main.py --input input/products.json --output output/enriched.json
 ```
 
 ### Using Shared Utilities

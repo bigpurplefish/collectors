@@ -14,8 +14,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import load_json_file, save_json_file
-search import CoastalSearcher
-parser import CoastalParser
+from src.search import CoastalSearcher
+from src.parser import CoastalParser
 
 
 # Site Configuration (embedded from profile)

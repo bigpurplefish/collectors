@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import text_only, extract_json_from_script
-image_processor import (
+from src.image_processor import (
     extract_gallery_from_model_product,
     extract_dom_gallery_fallback
 )

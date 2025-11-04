@@ -13,8 +13,8 @@ from typing import Dict, Any, Callable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import load_json_file, save_json_file
-search import FrommSearcher
-parser import FrommParser
+from src.search import FrommSearcher
+from src.parser import FrommParser
 
 
 # Site Configuration (embedded from profile)

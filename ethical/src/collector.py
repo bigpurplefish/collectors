@@ -13,8 +13,8 @@ from typing import Dict, Any, Optional, Callable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import load_json_file, save_json_file
-search import EthicalSearcher
-parser import EthicalParser
+from src.search import EthicalSearcher
+from src.parser import EthicalParser
 
 
 # Site Configuration (embedded from profile)

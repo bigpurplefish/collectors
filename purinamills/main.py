@@ -9,8 +9,8 @@ import argparse
 import sys
 import os
 
-# Add parent directories to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(__file__))
 
 from src.collector import PurinamillsCollector
 

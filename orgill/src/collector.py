@@ -12,9 +12,9 @@ from typing import Dict, Any, Optional
 # Add parent directory to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-auth import OrgillAuthenticator, StrategyLoginError
-search import OrgillSearcher
-parser import OrgillParser
+from src.auth import OrgillAuthenticator, StrategyLoginError
+from src.search import OrgillSearcher
+from src.parser import OrgillParser
 
 
 # Site Configuration (embedded from profile)

@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import text_only
-image_processor import ChalaImageProcessor
+from src.image_processor import ChalaImageProcessor
 
 
 class ChalaParser:

@@ -14,8 +14,8 @@ from typing import Dict, Any, Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import load_json_file, save_json_file
-catalog import CatalogManager
-enricher import ProductEnricher
+from src.catalog import CatalogManager
+from src.enricher import ProductEnricher
 
 
 # Bradley Caldwell Site Configuration (embedded from profile)

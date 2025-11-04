@@ -9,9 +9,9 @@ from typing import Dict, Any, Set, Optional
 # Add parent directory to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-variant_handler import VariantHandler
-search import TalltailsSearcher
-parser import TalltailsParser
+from src.variant_handler import VariantHandler
+from src.search import TalltailsSearcher
+from src.parser import TalltailsParser
 
 
 # Site Configuration (embedded from profile)

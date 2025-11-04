@@ -13,8 +13,8 @@ from typing import Dict, Any
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import load_json_file, save_json_file
-search import ChalaSearcher
-parser import ChalaParser
+from src.search import ChalaSearcher
+from src.parser import ChalaParser
 
 
 # Site Configuration (embedded from profile)

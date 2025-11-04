@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from shared.src import text_only, deduplicate_urls
-image_processor import EthicalImageProcessor
+from src.image_processor import EthicalImageProcessor
 
 
 class EthicalParser:
