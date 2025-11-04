@@ -111,15 +111,31 @@ def generate_shopify_product(
             "image_id": variant_position
         }
 
-        # Add metafields
-        # Model number
+        # Add variant metafields
+
+        # Model Number
         model_number = input_data.get('item_#', sku)
-        variant["metafields"].append({
-            "namespace": "custom",
-            "key": "model_number",
-            "value": model_number,
-            "type": "single_line_text_field"
-        })
+        if model_number:
+            variant["metafields"].append({
+                "namespace": "custom",
+                "key": "model_number",
+                "value": str(model_number),
+                "type": "single_line_text_field"
+            })
+
+        # Size Info (if we have size data)
+        if size and size != 'Standard':
+            import json as json_lib
+            size_info = {
+                "label": size,
+                "weight": size  # e.g., "50 LB"
+            }
+            variant["metafields"].append({
+                "namespace": "custom",
+                "key": "size_info",
+                "value": json_lib.dumps(size_info),
+                "type": "json"
+            })
 
         shopify_variants.append(variant)
         variant_position += 1
@@ -166,50 +182,50 @@ def generate_shopify_product(
     # Build metafields (product-level)
     metafields = []
 
-    # Features & Benefits
+    # Features (from Features & Benefits section)
     features = parsed_data.get('features_benefits', '')
     if features:
         metafields.append({
             "namespace": "custom",
             "key": "features",
             "value": _clean_html(features),
-            "type": "multi_line_text_field"
+            "type": "rich_text_field"
         })
-        log(f"    - Added Features & Benefits metafield")
+        log(f"    - Added Features metafield")
 
-    # Nutrients / Guaranteed Analysis
+    # Nutritional Information (from Nutrients/Guaranteed Analysis section)
     nutrients = parsed_data.get('nutrients', '')
     if nutrients:
         metafields.append({
             "namespace": "custom",
-            "key": "guaranteed_analysis",
+            "key": "nutritional_information",
             "value": _clean_html(nutrients),
-            "type": "multi_line_text_field"
+            "type": "rich_text_field"
         })
-        log(f"    - Added Guaranteed Analysis metafield")
+        log(f"    - Added Nutritional Information metafield")
 
-    # Feeding Directions
+    # Directions (from Feeding Directions section)
     directions = parsed_data.get('feeding_directions', '')
     if directions:
         metafields.append({
             "namespace": "custom",
-            "key": "feeding_directions",
+            "key": "directions",
             "value": _clean_html(directions),
-            "type": "multi_line_text_field"
+            "type": "rich_text_field"
         })
-        log(f"    - Added Feeding Directions metafield")
+        log(f"    - Added Directions metafield")
 
-    # Documents (from www site)
+    # Documentation (from www site PDFs)
     documents = parsed_data.get('documents', [])
     if documents:
         import json
         metafields.append({
             "namespace": "custom",
-            "key": "documents",
+            "key": "documentation",
             "value": json.dumps(documents),
             "type": "json"
         })
-        log(f"    - Added {len(documents)} document(s) metafield")
+        log(f"    - Added Documentation metafield with {len(documents)} document(s)")
 
     # Build final Shopify product structure
     shopify_product = {
