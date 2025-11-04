@@ -158,15 +158,11 @@ class PurinamillsParser:
                 if img:
                     src = img.get('src') or ''
                     if src:
-                        # Clean and add the URL
-                        # Remove size parameters to get full-size image
+                        # Clean URL - _clean_url removes ALL query parameters
+                        # to get the largest image available from Shopify CDN
                         # Example: //shop.purinamills.com/cdn/shop/files/image.jpg?v=1748440581&width=416
-                        # Should become: //shop.purinamills.com/cdn/shop/files/image.jpg?v=1748440581
+                        # Becomes: https://shop.purinamills.com/cdn/shop/files/image.jpg
                         clean = self._clean_url(src, self.shop_origin)
-                        # Remove width parameter but keep version parameter
-                        clean = re.sub(r'&width=\d+', '', clean)
-                        clean = re.sub(r'\?width=\d+&', '?', clean)
-                        clean = re.sub(r'\?width=\d+$', '', clean)
 
                         if clean and clean not in seen:
                             images.append(clean)
