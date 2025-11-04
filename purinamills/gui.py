@@ -128,7 +128,7 @@ def build_gui():
     help_icon.pack(side="left")
     ToolTip(
         help_icon,
-        text="Select the JSON file containing your product data.\n\nThis file should include product information with UPCs and names.\n\nTip: Use the Browse button to easily find your file.",
+        text="Select the input file containing your product data.\n\nSupports both JSON (.json) and Excel (.xlsx, .xlsm) formats.\nFile should include product information with UPCs and names.\n\nTip: Use the Browse button to easily find your file.",
         bootstyle="info"
     )
     tb.Label(label_frame, text=":", anchor="w").pack(side="left")
@@ -142,7 +142,12 @@ def build_gui():
         try:
             filename = filedialog.askopenfilename(
                 title="Select Input File",
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+                filetypes=[
+                    ("Supported files", "*.json;*.xlsx;*.xlsm"),
+                    ("JSON files", "*.json"),
+                    ("Excel files", "*.xlsx;*.xlsm"),
+                    ("All files", "*.*")
+                ]
             )
             if filename:
                 input_var.set(filename)
@@ -358,13 +363,20 @@ def build_gui():
                 status(f"Log: {log_file}")
                 status("")
 
-                # Load input
+                # Load input (supports JSON and Excel)
                 status("Loading input file...")
-                with open(input_file, 'r', encoding='utf-8') as f:
-                    products = json.load(f)
+
+                # Add shared utilities to path
+                import sys
+                shared_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'shared')
+                if shared_path not in sys.path:
+                    sys.path.insert(0, shared_path)
+
+                from src.excel_utils import load_products
+                products = load_products(input_file)
 
                 if not isinstance(products, list):
-                    raise ValueError("Input must be a JSON array of products")
+                    raise ValueError("Input must be an array of products")
 
                 status(f"Loaded {len(products)} products")
                 status("")
