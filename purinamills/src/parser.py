@@ -1,12 +1,13 @@
 """
 Page parsing for Purinamills collector.
 
-Extracts product data from both shop.purinamills.com and www.purinamills.com pages.
+Extracts comprehensive product data from both shop.purinamills.com and www.purinamills.com pages
+for Shopify product import.
 """
 
 import re
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from bs4 import BeautifulSoup
 import os
 import sys
@@ -30,14 +31,11 @@ class PurinamillsParser:
         self.www_origin = config.get("www_origin", "https://www.purinamills.com")
 
     def _clean_url(self, url: str, origin: str) -> str:
-        """Clean and normalize image URL."""
+        """Clean and normalize URL, removing size parameters."""
         if not url:
             return ""
         url = url.strip().strip('"').strip("'")
-        # Remove query parameters
-        qpos = url.find("?")
-        if qpos != -1:
-            url = url[:qpos]
+
         # Make absolute
         if url.startswith("//"):
             url = "https:" + url
@@ -45,7 +43,18 @@ class PurinamillsParser:
             url = f"{origin.rstrip('/')}{url}"
         elif not url.startswith("http"):
             url = f"{origin.rstrip('/')}/{url.lstrip('/')}"
-        return url.replace("http://", "https://")
+
+        # Convert to HTTPS
+        url = url.replace("http://", "https://")
+
+        # Remove size parameters (_300x, _400x, etc.) to get full-size image
+        url = re.sub(r'(_\d+x\d+|\d+x\.jpg|\d+x\.png)', '', url)
+
+        # Remove query parameters
+        if "?" in url:
+            url = url.split("?")[0]
+
+        return url
 
     def _detect_site_type(self, soup: BeautifulSoup, html_text: str) -> str:
         """Detect whether this is a shop or www site page."""
@@ -66,8 +75,181 @@ class PurinamillsParser:
                 return "shop"
             elif 'www.purinamills.com' in og_url['content']:
                 return "www"
-        # Default to shop
         return "shop"
+
+    def _extract_shop_variants(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
+        """Extract product variants from shop site (sizes/options)."""
+        variants = []
+
+        # Look for variant select dropdown
+        variant_select = soup.find('select', {'name': 'id'})
+        if variant_select:
+            options = variant_select.find_all('option')
+            for opt in options:
+                value = opt.get('value', '')
+                text = opt.get_text(strip=True)
+
+                # Parse "50 LB / BG - $32.99"
+                match = re.match(r'(.+?)\s*-\s*\$?([\d,.]+)', text)
+                if match:
+                    option_text = match.group(1).strip()
+                    price = match.group(2).replace(',', '')
+
+                    # Split option text (e.g., "50 LB / BG" -> size="50 LB", material="BG")
+                    parts = [p.strip() for p in option_text.split('/')]
+
+                    variants.append({
+                        'variant_id': value,
+                        'option_text': option_text,
+                        'size': parts[0] if len(parts) > 0 else '',
+                        'material': parts[1] if len(parts) > 1 else '',
+                        'price': price
+                    })
+
+        # Also look for JSON variant data in scripts
+        for script in soup.find_all('script'):
+            if script.string and 'variant' in script.string.lower():
+                try:
+                    # Try to extract JSON variant data
+                    json_match = re.search(r'var\s+\w+\s*=\s*({.*?variants.*?});', script.string, re.DOTALL)
+                    if json_match:
+                        data = json.loads(json_match.group(1))
+                        if 'variants' in data:
+                            for var in data['variants']:
+                                if isinstance(var, dict):
+                                    variants.append({
+                                        'variant_id': var.get('id', ''),
+                                        'sku': var.get('sku', ''),
+                                        'price': str(var.get('price', 0) / 100) if 'price' in var else '',
+                                        'option1': var.get('option1', ''),
+                                        'option2': var.get('option2', ''),
+                                        'option3': var.get('option3', ''),
+                                    })
+                except:
+                    pass
+
+        return variants
+
+    def _extract_shop_images(self, soup: BeautifulSoup) -> List[str]:
+        """Extract full-size gallery images from shop site."""
+        images = []
+        seen = set()
+
+        # Look for JSON-LD product images
+        for script in soup.find_all('script', type='application/ld+json'):
+            try:
+                data = json.loads(script.string)
+                if isinstance(data, dict) and data.get('@type') == 'Product':
+                    imgs = data.get('image', [])
+                    if isinstance(imgs, list):
+                        for img_url in imgs:
+                            clean = self._clean_url(str(img_url), self.shop_origin)
+                            if clean and clean not in seen:
+                                images.append(clean)
+                                seen.add(clean)
+                    elif isinstance(imgs, str):
+                        clean = self._clean_url(imgs, self.shop_origin)
+                        if clean and clean not in seen:
+                            images.append(clean)
+                            seen.add(clean)
+            except:
+                pass
+
+        # Extract from DOM - look for product gallery images
+        for img in soup.find_all('img'):
+            src = img.get('data-src') or img.get('src') or ''
+            if src and any(x in src for x in ['/products/', '/files/', 'cdn.shop']):
+                clean = self._clean_url(src, self.shop_origin)
+                if clean and clean not in seen and not any(x in clean.lower() for x in ['logo', 'icon', 'favicon']):
+                    images.append(clean)
+                    seen.add(clean)
+
+        return images
+
+    def _extract_shop_tab_content(self, soup: BeautifulSoup) -> Dict[str, str]:
+        """Extract content from tabs (Features & Benefits, Nutrients, Feeding Directions)."""
+        tab_content = {}
+
+        # Look for tab container
+        tabs_container = soup.find('div', class_=lambda x: x and 'tab' in str(x).lower())
+
+        if tabs_container:
+            # Find all sections that might be tab content
+            sections = tabs_container.find_all(['div', 'section'], recursive=True)
+
+            for section in sections:
+                section_text = section.get_text(strip=True)
+                section_html = str(section)
+
+                # Features & Benefits
+                if any(term in section_text.lower() for term in ['features', 'benefit']):
+                    # Extract as HTML list
+                    ul = section.find('ul')
+                    if ul:
+                        tab_content['features_benefits'] = str(ul)
+                    elif section_text:
+                        # Convert to list
+                        items = [li.strip() for li in section_text.split('\n') if li.strip() and len(li.strip()) > 10]
+                        if items:
+                            tab_content['features_benefits'] = '<ul>\n' + '\n'.join(f'  <li>{item}</li>' for item in items) + '\n</ul>'
+
+                # Nutrients / Guaranteed Analysis
+                if any(term in section_text.lower() for term in ['nutrient', 'guaranteed analysis', 'analysis']):
+                    table = section.find('table')
+                    if table:
+                        tab_content['nutrients'] = str(table)
+                    else:
+                        tab_content['nutrients'] = section_html
+
+                # Feeding Directions
+                if any(term in section_text.lower() for term in ['feeding direction', 'directions for use', 'how to feed']):
+                    ul = section.find('ul')
+                    if ul:
+                        tab_content['feeding_directions'] = str(ul)
+                    elif section_text:
+                        # Convert to list
+                        items = [li.strip() for li in section_text.split('\n') if li.strip() and len(li.strip()) > 15]
+                        if items:
+                            tab_content['feeding_directions'] = '<ul>\n' + '\n'.join(f'  <li>{item}</li>' for item in items) + '\n</ul>'
+
+        # Fallback: search entire document for these sections
+        if not tab_content.get('features_benefits'):
+            for elem in soup.find_all(string=re.compile(r'features?\s*(&|and)?\s*benefits?', re.I)):
+                parent = elem.parent
+                while parent:
+                    ul = parent.find('ul')
+                    if ul:
+                        tab_content['features_benefits'] = str(ul)
+                        break
+                    parent = parent.parent
+                    if parent and parent.name in ['body', 'html']:
+                        break
+
+        if not tab_content.get('nutrients'):
+            for elem in soup.find_all(string=re.compile(r'guaranteed analysis|nutrients?', re.I)):
+                parent = elem.parent
+                while parent:
+                    table = parent.find('table')
+                    if table:
+                        tab_content['nutrients'] = str(table)
+                        break
+                    parent = parent.parent
+                    if parent and parent.name in ['body', 'html']:
+                        break
+
+        if not tab_content.get('feeding_directions'):
+            for elem in soup.find_all(string=re.compile(r'feeding directions?|directions for use', re.I)):
+                parent = elem.parent
+                while parent:
+                    ul = parent.find('ul')
+                    if ul:
+                        tab_content['feeding_directions'] = str(ul)
+                        break
+                    parent = parent.parent
+                    if parent and parent.name in ['body', 'html']:
+                        break
+
+        return tab_content
 
     def _parse_shop_site(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Parse product page from shop.purinamills.com (Shopify)."""
@@ -105,91 +287,64 @@ class PurinamillsParser:
             if desc_el:
                 description = text_only(desc_el.get_text(" ", strip=True))
 
-        # Extract benefits (bullet lists)
-        benefits: List[Dict[str, str]] = []
-        for ul in soup.find_all("ul"):
-            # Skip navigation and footer lists
-            if any(cls in str(ul.get("class", [])) for cls in ["nav", "menu", "footer", "list-menu"]):
-                continue
-            for li in ul.find_all("li", recursive=False):
-                benefit_text = text_only(li.get_text(" ", strip=True))
-                if benefit_text and len(benefit_text) > 15:  # Filter out short items
-                    benefits.append({"title": "", "description": benefit_text})
-            if len(benefits) >= 3:  # Found meaningful list
-                break
+        # Extract variants
+        variants = self._extract_shop_variants(soup)
 
-        # Extract gallery images - try JSON-LD first
-        gallery_images: List[str] = []
-        seen = set()
+        # Extract gallery images (full-size)
+        gallery_images = self._extract_shop_images(soup)
 
-        for script in soup.find_all("script", type="application/ld+json"):
-            try:
-                data = json.loads(script.string)
-                if isinstance(data, dict) and data.get("@type") == "Product":
-                    imgs = data.get("image", [])
-                    if isinstance(imgs, list):
-                        for img_url in imgs:
-                            clean = self._clean_url(str(img_url), self.shop_origin)
-                            if clean and clean not in seen:
-                                gallery_images.append(clean)
-                                seen.add(clean)
-                    elif isinstance(imgs, str):
-                        clean = self._clean_url(imgs, self.shop_origin)
-                        if clean and clean not in seen:
-                            gallery_images.append(clean)
-                            seen.add(clean)
-            except:
-                pass
-
-        # Extract from DOM - look for product images
-        for img in soup.find_all("img"):
-            src = img.get("data-src") or img.get("src") or ""
-            if src:
-                clean = self._clean_url(src, self.shop_origin)
-                # Filter for product images (exclude logos, icons, etc.)
-                if clean and any(x in clean.lower() for x in ["product", "cdn.shop", "/products/", "_horse-", "_cattle-"]):
-                    if clean not in seen and not any(x in clean.lower() for x in ["logo", "icon", "favicon"]):
-                        gallery_images.append(clean)
-                        seen.add(clean)
-
-        # Extract nutrition/guaranteed analysis
-        nutrition_text = ""
-        nutrition_section = soup.find(string=re.compile(r"guaranteed analysis", re.I))
-        if nutrition_section:
-            parent = nutrition_section.parent
-            while parent and not nutrition_text:
-                parent_text = text_only(parent.get_text(" ", strip=True))
-                if "guaranteed analysis" in parent_text.lower() and len(parent_text) > 50:
-                    nutrition_text = parent_text
-                    break
-                parent = parent.parent
-                if parent and parent.name in ["body", "html"]:
-                    break
-
-        # Extract feeding directions
-        directions_for_use = ""
-        directions_section = soup.find(string=re.compile(r"feeding directions?|directions for use", re.I))
-        if directions_section:
-            parent = directions_section.parent
-            while parent and not directions_for_use:
-                parent_text = text_only(parent.get_text(" ", strip=True))
-                if any(x in parent_text.lower() for x in ["feeding direction", "directions for use"]) and len(parent_text) > 50:
-                    directions_for_use = parent_text
-                    break
-                parent = parent.parent
-                if parent and parent.name in ["body", "html"]:
-                    break
+        # Extract tab content
+        tab_content = self._extract_shop_tab_content(soup)
 
         return {
             "title": title,
             "brand_hint": brand_hint,
-            "benefits": benefits,
             "description": description,
+            "variants": variants,
             "gallery_images": gallery_images,
-            "nutrition_text": nutrition_text,
-            "directions_for_use": directions_for_use,
+            "features_benefits": tab_content.get("features_benefits", ""),
+            "nutrients": tab_content.get("nutrients", ""),
+            "feeding_directions": tab_content.get("feeding_directions", ""),
             "site_source": "shop"
         }
+
+    def _extract_www_images(self, soup: BeautifulSoup) -> List[str]:
+        """Extract full-size product images from www site."""
+        images = []
+        seen = set()
+
+        for img in soup.find_all('img'):
+            src = img.get('src') or img.get('data-src') or ''
+            if src:
+                clean = self._clean_url(src, self.www_origin)
+                # Filter for product/feed images
+                if clean and any(x in clean.lower() for x in ['product', 'feed', 'bag', 'amplify', 'equine', 'horse']):
+                    if clean not in seen and not any(x in clean.lower() for x in ['logo', 'icon', 'favicon', 'banner', 'mic-w']):
+                        images.append(clean)
+                        seen.add(clean)
+
+        return images
+
+    def _extract_www_documents(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
+        """Extract documents from Additional Materials section."""
+        documents = []
+
+        # Look for document links (PDFs, etc.)
+        for link in soup.find_all('a', href=True):
+            href = link.get('href', '')
+            text = link.get_text(strip=True)
+
+            # Check if it's a document link
+            if any(ext in href.lower() for ext in ['.pdf', '.doc', '.docx', '/document/', '/media/']):
+                clean_url = self._clean_url(href, self.www_origin)
+                if clean_url:
+                    documents.append({
+                        'title': text or 'Document',
+                        'url': clean_url,
+                        'type': 'pdf' if '.pdf' in href.lower() else 'document'
+                    })
+
+        return documents
 
     def _parse_www_site(self, soup: BeautifulSoup) -> Dict[str, Any]:
         """Parse product page from www.purinamills.com (information site)."""
@@ -204,10 +359,8 @@ class PurinamillsParser:
         if "®" in title:
             brand_hint = title.split("®")[0].strip()
 
-        # Extract description - look for product overview or meta description
+        # Extract description - try meta description first
         description = ""
-
-        # Try meta description first
         meta_desc = soup.find("meta", attrs={"name": "description"})
         if meta_desc and meta_desc.get("content"):
             description = text_only(meta_desc["content"])
@@ -217,81 +370,71 @@ class PurinamillsParser:
             desc_candidates = soup.select('[class*="overview"], [class*="description"], [id*="overview"], p')
             for el in desc_candidates:
                 desc_text = text_only(el.get_text(" ", strip=True))
-                if len(desc_text) > 100 and any(word in desc_text.lower() for word in ["feed", "formulated", "nutrition"]):
+                if len(desc_text) > 100 and any(word in desc_text.lower() for word in ["feed", "formulated", "nutrition", "supplement"]):
                     description = desc_text
                     break
 
-        # Extract benefits/features
-        benefits: List[Dict[str, str]] = []
+        # Extract features/benefits
+        features_benefits = ""
         feature_sections = soup.select('[class*="benefit"], [class*="feature"], [class*="key-point"]')
-        for section in feature_sections:
-            for li in section.find_all("li"):
-                benefit_text = text_only(li.get_text(" ", strip=True))
-                if benefit_text and len(benefit_text) > 15:
-                    benefits.append({"title": "", "description": benefit_text})
-
-        # If no benefits found, look for any meaningful lists
-        if not benefits:
-            for ul in soup.find_all("ul"):
-                if any(cls in str(ul.get("class", [])) for cls in ["nav", "menu", "footer"]):
-                    continue
-                for li in ul.find_all("li", recursive=False):
+        if feature_sections:
+            items = []
+            for section in feature_sections:
+                for li in section.find_all("li"):
                     benefit_text = text_only(li.get_text(" ", strip=True))
                     if benefit_text and len(benefit_text) > 15:
-                        benefits.append({"title": "", "description": benefit_text})
-                if len(benefits) >= 3:
-                    break
-
-        # Extract images - look for product images
-        gallery_images: List[str] = []
-        seen = set()
-
-        for img in soup.find_all("img"):
-            src = img.get("src") or img.get("data-src") or ""
-            if src:
-                clean = self._clean_url(src, self.www_origin)
-                # Filter for product/feed images
-                if clean and any(x in clean.lower() for x in ["product", "feed", "bag", "purina"]):
-                    if clean not in seen and not any(x in clean.lower() for x in ["logo", "icon", "favicon", "banner"]):
-                        gallery_images.append(clean)
-                        seen.add(clean)
+                        items.append(benefit_text)
+            if items:
+                features_benefits = '<ul>\n' + '\n'.join(f'  <li>{item}</li>' for item in items) + '\n</ul>'
 
         # Extract guaranteed analysis
-        nutrition_text = ""
+        nutrients = ""
         nutrition_section = soup.find(string=re.compile(r"guaranteed analysis", re.I))
         if nutrition_section:
             parent = nutrition_section.parent
-            while parent and not nutrition_text:
-                parent_text = text_only(parent.get_text(" ", strip=True))
-                if "guaranteed analysis" in parent_text.lower() and len(parent_text) > 50:
-                    nutrition_text = parent_text
+            while parent:
+                table = parent.find('table')
+                if table:
+                    nutrients = str(table)
                     break
                 parent = parent.parent
                 if parent and parent.name in ["body", "html"]:
                     break
 
         # Extract feeding directions
-        directions_for_use = ""
+        feeding_directions = ""
         directions_section = soup.find(string=re.compile(r"feeding directions?|how to feed", re.I))
         if directions_section:
             parent = directions_section.parent
-            while parent and not directions_for_use:
-                parent_text = text_only(parent.get_text(" ", strip=True))
-                if any(x in parent_text.lower() for x in ["feeding direction", "how to feed"]) and len(parent_text) > 50:
-                    directions_for_use = parent_text
+            while parent:
+                ul = parent.find('ul')
+                if ul:
+                    feeding_directions = str(ul)
+                    break
+                # Also look for paragraphs with directions
+                text = text_only(parent.get_text(" ", strip=True))
+                if 'feed' in text.lower() and len(text) > 100:
+                    feeding_directions = f'<p>{text}</p>'
                     break
                 parent = parent.parent
                 if parent and parent.name in ["body", "html"]:
                     break
 
+        # Extract images
+        gallery_images = self._extract_www_images(soup)
+
+        # Extract documents (ALWAYS scrape these)
+        documents = self._extract_www_documents(soup)
+
         return {
             "title": title,
             "brand_hint": brand_hint,
-            "benefits": benefits,
             "description": description,
+            "features_benefits": features_benefits,
+            "nutrients": nutrients,
+            "feeding_directions": feeding_directions,
             "gallery_images": gallery_images,
-            "nutrition_text": nutrition_text,
-            "directions_for_use": directions_for_use,
+            "documents": documents,
             "site_source": "www"
         }
 
@@ -308,11 +451,13 @@ class PurinamillsParser:
             Dictionary with extracted product data:
                 - title: Product title
                 - brand_hint: Brand name
-                - benefits: List of product benefits
                 - description: Product description
+                - variants: List of product variants (shop site only)
                 - gallery_images: List of image URLs
-                - nutrition_text: Nutrition/guaranteed analysis
-                - directions_for_use: Feeding directions
+                - features_benefits: HTML content
+                - nutrients: HTML table or content
+                - feeding_directions: HTML content
+                - documents: List of document objects (www site)
                 - site_source: "shop" or "www"
         """
         soup = BeautifulSoup(html_text or "", "html.parser")

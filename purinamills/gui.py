@@ -568,6 +568,11 @@ def build_gui():
                 status("✅ Collector initialized")
                 status("")
 
+                # Import HTTP library for requests
+                import requests
+                from time import sleep
+                from random import uniform
+
                 # Process products
                 enriched = []
                 success_count = 0
@@ -583,12 +588,13 @@ def build_gui():
                     actual_record_num = start_idx + i + 1
 
                     status(f"[{i+1}/{len(products)}] Record #{actual_record_num}: {name}")
+                    status(f"  UPC: {upc}")
 
                     # Check if already processed (skip mode)
                     if processing_mode == "skip":
                         lookup_key = upc if upc else f"item_{item_num}"
                         existing = existing_products.get(lookup_key)
-                        if existing and existing.get('manufacturer'):
+                        if existing and existing.get('product'):  # Check for Shopify format
                             status(f"  ⏭ Skipping (already processed)")
                             enriched.append(existing)
                             skip_count += 1
@@ -596,16 +602,93 @@ def build_gui():
                             continue
 
                     try:
-                        # TODO: Implement actual collection logic here
-                        # enriched_product = collector.enrich(product)
-                        enriched.append(product)
+                        # Step 1: Find product URL
+                        status(f"  🔍 Searching for product...")
+                        product_url = collector.find_product_url(
+                            upc=upc,
+                            http_get=requests.get,
+                            timeout=30,
+                            log=status,
+                            product_data=product
+                        )
+
+                        if not product_url:
+                            status(f"  ⚠ Product not found on either site")
+                            enriched.append({"input": product, "product": None, "error": "Product not found"})
+                            fail_count += 1
+                            status("")
+                            continue
+
+                        status(f"  ✓ Found: {product_url}")
+
+                        # Step 2: Fetch product page
+                        status(f"  📥 Fetching product page...")
+                        response = requests.get(product_url, timeout=30)
+                        response.raise_for_status()
+                        status(f"  ✓ Page fetched ({len(response.text)} bytes)")
+
+                        # Step 3: Parse product data
+                        status(f"  📋 Parsing product data...")
+                        parsed_data = collector.parse_page(response.text)
+                        status(f"  ✓ Parsed from {parsed_data.get('site_source', 'unknown')} site")
+
+                        if parsed_data.get('variants'):
+                            status(f"    - Found {len(parsed_data['variants'])} variant(s)")
+                        if parsed_data.get('gallery_images'):
+                            status(f"    - Found {len(parsed_data['gallery_images'])} image(s)")
+                        if parsed_data.get('features_benefits'):
+                            status(f"    - Extracted Features & Benefits")
+                        if parsed_data.get('nutrients'):
+                            status(f"    - Extracted Nutrients")
+                        if parsed_data.get('feeding_directions'):
+                            status(f"    - Extracted Feeding Directions")
+
+                        # Step 4: If from shop site, also fetch www site for documents
+                        www_data = None
+                        if parsed_data.get('site_source') == 'shop':
+                            status(f"  🌐 Fetching additional materials from www site...")
+                            # Try to construct www URL
+                            www_url = product_url.replace('shop.purinamills.com/products/', 'www.purinamills.com/horse-feed/products/detail/')
+                            try:
+                                www_response = requests.get(www_url, timeout=30)
+                                if www_response.status_code == 200:
+                                    www_data = collector.parse_page(www_response.text)
+                                    if www_data.get('documents'):
+                                        status(f"  ✓ Found {len(www_data['documents'])} document(s)")
+                                        parsed_data['documents'] = www_data['documents']
+                                else:
+                                    status(f"  ⚠ WWW site returned {www_response.status_code}")
+                            except Exception as e:
+                                status(f"  ⚠ Could not fetch www site: {str(e)}")
+
+                        # Step 5: Generate Shopify output structure
+                        status(f"  🏗️  Generating Shopify product structure...")
+
+                        # Import the output generator
+                        sys.path.insert(0, os.path.dirname(__file__))
+                        from src.shopify_output import generate_shopify_product
+
+                        shopify_product = generate_shopify_product(
+                            parsed_data=parsed_data,
+                            input_data=product,
+                            log=status
+                        )
+
+                        status(f"  ✓ Generated product with {len(shopify_product.get('product', {}).get('variants', []))} variant(s)")
+
+                        enriched.append(shopify_product)
                         success_count += 1
-                        status(f"  ✅ Processed successfully")
+                        status(f"  ✅ Successfully processed")
+
+                        # Rate limiting
+                        sleep(uniform(0.2, 0.7))
+
                     except Exception as e:
                         fail_count += 1
                         status(f"  ❌ Error: {str(e)}")
                         logging.exception(f"Error processing product {upc}:")
-                        enriched.append(product)  # Keep original on error
+                        # Keep original input with error info
+                        enriched.append({"input": product, "product": None, "error": str(e)})
 
                     status("")
 
