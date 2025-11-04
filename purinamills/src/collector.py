@@ -12,7 +12,6 @@ from typing import Dict, Any
 # Add parent directories to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from src.index import ProductIndexer
 from src.search import PurinamillsSearcher
 from src.parser import PurinamillsParser
 
@@ -20,25 +19,30 @@ from src.parser import PurinamillsParser
 # Site Configuration (embedded from profile)
 SITE_CONFIG = {
     "site_key": "purinamills",
+
+    # Primary e-commerce site (Shopify)
+    "shop_origin": "https://shop.purinamills.com",
+    "shop_search_path": "/search",
+    "shop_search_param": "q",
+
+    # Secondary information site (fallback)
+    "www_origin": "https://www.purinamills.com",
+    "www_search_path": "/search",
+    "www_search_param": "q",
+
+    # Legacy compatibility
     "origin": "https://shop.purinamills.com",
     "referer": "https://shop.purinamills.com/",
+
+    # HTTP settings
     "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
     "fetch_jitter_min_ms": 200,
     "fetch_jitter_max_ms": 700,
-    "candidate_cap": 8,
-    "hl": "en",
-    "gl": "us",
-    "bv_auth_required": False,
-    "bv_base_url": "",
-    "bv_common_params": {},
-    "requires_catalog": False,
-    "all_products_path": "/collections/all-products",
-    "requires_name_index": True,
-    "index_view_all": True,
-    "index_page_param": "page",
-    "max_index_pages": 20,
-    "enable_search_fallback": True,
-    "max_search_candidates": 30,
+    "timeout": 30,
+
+    # Search settings
+    "max_search_candidates": 10,
+    "fuzzy_match_threshold": 0.3,
 }
 
 
@@ -53,9 +57,8 @@ class PurinamillsCollector:
             config: Optional site configuration (defaults to SITE_CONFIG)
         """
         self.config = config or SITE_CONFIG
-        self.indexer = ProductIndexer(self.config)
-        self.searcher = PurinamillsSearcher(self.config, self.indexer)
-        self.parser = PurinamillsParser(self.config.get("origin", ""))
+        self.searcher = PurinamillsSearcher(self.config)
+        self.parser = PurinamillsParser(self.config)
 
     def find_product_url(
         self,

@@ -29,9 +29,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Purinamills Product Collector - Collects and enriches product data from https://shop.purinamills.com.
+Purinamills Product Collector - Collects and enriches product data from two Purina Mills websites:
+- **shop.purinamills.com** - E-commerce site (Shopify) - primary source
+- **www.purinamills.com** - Information site - fallback
 
-This collector uses a name-based fuzzy matching approach since the site does not expose UPC codes directly in product listings. The collector builds an index of all products and uses keyword matching to find the correct product page.
+This collector uses direct site search with a 3-tier fallback strategy:
+1. Exact match using `description_1` field on shop site
+2. Fuzzy match using description_1/upcitemdb_title on shop site
+3. Fallback to www site if shop site has no matches
+
+The input file `description_1` field contains exact product names as they appear on the sites, enabling efficient exact-match searching without building a full product index.
 
 ## Architecture
 
@@ -39,41 +46,38 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 ### Core Components
 
-**collector.py** (45 lines): Main orchestration layer
-- Embeds site configuration (`SITE_CONFIG`)
-- Coordinates between indexer, searcher, and parser
+**collector.py**: Main orchestration layer
+- Embeds dual-site configuration (`SITE_CONFIG`)
+- Supports both shop.purinamills.com and www.purinamills.com
+- Coordinates between searcher and parser
 - Provides `find_product_url()` and `parse_page()` public API
-- CLI entry point with argparse
 
-**index.py** (222 lines): Product index management
-- `ProductIndexer` class builds runtime product index
-- Crawls `/collections/all-products` (configurable pagination)
-- Supports `view=all` parameter for single-page indexing
-- Extracts product names and URLs into searchable index
-- Implements keyword extraction with stop words and synonyms
-- Pagination detection (link rel="next", aria-label, CSS selectors)
+**search.py**: Direct site search with 3-tier fallback
+- `PurinamillsSearcher` class handles search across both sites
+- **Strategy 1**: Exact match on description_1 (shop site via `/search?q=`)
+- **Strategy 2**: Fuzzy match on description_1/upcitemdb_title (shop site)
+- **Strategy 3**: Fallback to www site search
+- Uses keyword-based scoring with stop words and synonyms
+- Minimum threshold: 0.3 score for fuzzy acceptance
+- Parses search results to extract product links
 
-**search.py** (171 lines): Product discovery
-- `PurinamillsSearcher` class handles fuzzy name matching
-- Uses keyword-based scoring against product index
-- Falls back to site search (`/search?q=...`) if index match fails
-- Minimum threshold: 0.3 score for acceptance
-- Takes first search result if multiple matches
-
-**parser.py** (180 lines): HTML parsing
-- `PurinamillsParser` class extracts product data
-- Parses title, brand, description, benefits
-- Extracts images from JSON (modelProduct) and DOM
+**parser.py**: Dual-site HTML parsing
+- `PurinamillsParser` class handles both shop and www site formats
+- Auto-detects site type from canonical URL/Shopify markers
+- **Shop site**: Parses JSON-LD structured data, Shopify product pages
+- **WWW site**: Parses information pages with different structure
+- Extracts: title, brand, description, benefits, images, nutrition, directions
 - Normalizes image URLs to HTTPS
-- Attempts to parse nutrition and feeding directions
-- Returns structured dict with all extracted fields
+- Returns unified data structure with `site_source` indicator
 
 ### Data Flow
 
-1. **Index Building**: `ProductIndexer.build_index()` crawls all-products collection
-2. **Product Search**: `PurinamillsSearcher.find_product_url()` fuzzy matches against index
-3. **Page Parsing**: `PurinamillsParser.parse_page()` extracts data from HTML
-4. **Orchestration**: `PurinamillsCollector` coordinates the three components
+1. **Product Search**: `PurinamillsSearcher.find_product_url()` searches shop site first, then www
+   - Try exact match with description_1 on shop site
+   - Fall back to fuzzy match if no exact match
+   - Fall back to www site if shop site fails
+2. **Page Parsing**: `PurinamillsParser.parse_page()` auto-detects site type and extracts data
+3. **Orchestration**: `PurinamillsCollector` coordinates search and parsing
 
 ### Shared Dependencies
 
@@ -127,18 +131,25 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Site configuration is embedded in `collector.py`:
+Dual-site configuration is embedded in `collector.py`:
 
 ```python
 SITE_CONFIG = {
-    "origin": "https://shop.purinamills.com",
-    "all_products_path": "/collections/all-products",
-    "index_view_all": True,           # Try ?view=all for single-page index
-    "index_page_param": "page",       # Pagination param name
-    "max_index_pages": 20,            # Max pages to crawl during indexing
-    "max_search_candidates": 30,      # Max results from site search
-    "enable_search_fallback": True,   # Fall back to /search if index fails
-    # ... rate limiting, candidate caps, etc.
+    # Primary e-commerce site (Shopify)
+    "shop_origin": "https://shop.purinamills.com",
+    "shop_search_path": "/search",
+    "shop_search_param": "q",
+
+    # Secondary information site (fallback)
+    "www_origin": "https://www.purinamills.com",
+    "www_search_path": "/search",
+    "www_search_param": "q",
+
+    # Search settings
+    "max_search_candidates": 10,      # Max results per search
+    "fuzzy_match_threshold": 0.3,     # Minimum score for fuzzy matches
+    "fetch_jitter_min_ms": 200,       # Rate limiting
+    "fetch_jitter_max_ms": 700,
 }
 ```
 
@@ -152,8 +163,10 @@ Enriched products include:
 
 ## Notes
 
-- **Index-based discovery**: Builds product index at runtime, no pre-built catalog needed
+- **Direct site search**: Uses each site's search functionality instead of building index
+- **3-tier fallback**: Exact → Fuzzy → WWW site ensures high match rate
+- **description_1 field**: Must contain exact product names for best results
 - **Fuzzy matching**: Uses keyword extraction with synonyms (equine→horse, bovine→cattle)
 - **Rate limiting**: Configured via `fetch_jitter_min_ms` and `fetch_jitter_max_ms`
 - **Image normalization**: All images converted to HTTPS, query params stripped
-- **Error handling**: Graceful fallback to site search if index matching fails
+- **Dual-site support**: Automatically detects and parses both shop and www page formats
