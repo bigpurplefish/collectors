@@ -2,18 +2,22 @@
 """
 Purinamills Product Collector - GUI
 
-Simple GUI for running the Purinamills collector with file pickers and configuration.
+Thread-safe GUI for running the Purinamills collector with queue-based communication.
+Follows GUI_DESIGN_REQUIREMENTS.md patterns.
 """
 
 import os
 import sys
 import json
+import logging
+from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from tkinter.scrolledtext import ScrolledText
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
+from ttkbootstrap.tooltip import ToolTip
 import threading
+import queue
 from datetime import datetime
 
 # Add current directory to path for imports
@@ -21,357 +25,498 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from src.collector import PurinamillsCollector, SITE_CONFIG
 
-CONFIG_PATH = os.path.expanduser("~/.purinamills_collector_gui.json")
+# Configuration file path
+APP_DIR = Path(__file__).parent
+CONFIG_FILE = APP_DIR / "config.json"
 
-DEFAULTS = {
-    "input_json_file": "",
-    "output_json_file": "",
-    "log_file": "logs/purinamills.log",
+# Default configuration
+DEFAULT_CONFIG = {
+    "_COMMENT_USER_SETTINGS": "User-configurable settings",
+    "INPUT_FILE": "",
+    "OUTPUT_FILE": "",
+    "LOG_FILE": "logs/purinamills.log",
+    "WINDOW_GEOMETRY": "900x900",
+
+    "_COMMENT_SYSTEM_INFO": "System information (do not edit)",
+    "COLLECTOR_NAME": "Purinamills",
+    "COLLECTOR_ORIGIN": SITE_CONFIG["origin"]
 }
 
 
-class PurinamillsGUI:
-    """GUI for Purinamills Product Collector."""
+def load_config():
+    """Load configuration or create with defaults."""
+    if not CONFIG_FILE.exists():
+        save_config(DEFAULT_CONFIG)
+        return DEFAULT_CONFIG.copy()
 
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Purinamills Product Collector")
-        self.root.geometry("900x700")
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            # Merge with defaults in case new fields were added
+            for key, value in DEFAULT_CONFIG.items():
+                if key not in config:
+                    config[key] = value
+            return config
+    except Exception as e:
+        logging.error(f"Config load error: {e}")
+        return DEFAULT_CONFIG.copy()
 
-        # Load config
-        self.config = self.load_config()
 
-        # Create UI
-        self.create_widgets()
+def save_config(config):
+    """Save configuration to JSON file."""
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+    except Exception as e:
+        logging.error(f"Config save error: {e}")
 
-        # Populate from config
-        self.populate_from_config()
 
-    def load_config(self):
-        """Load saved configuration."""
+def build_gui():
+    """Build and launch the GUI."""
+    # Load configuration
+    cfg = load_config()
+
+    # Create main window
+    app = tb.Window(themename="darkly")
+    app.title(f"{cfg['COLLECTOR_NAME']} Product Collector")
+    app.geometry(cfg.get("WINDOW_GEOMETRY", "900x900"))
+
+    # Queues for thread-safe communication
+    status_queue = queue.Queue()
+    button_control_queue = queue.Queue()
+
+    # Toolbar
+    toolbar = tb.Frame(app)
+    toolbar.pack(side="top", fill="x", padx=5, pady=5)
+
+    # Main container
+    container = tb.Frame(app, padding=20)
+    container.pack(fill="both", expand=True)
+    container.columnconfigure(1, weight=1)  # Make input fields expandable
+
+    # Title
+    title = tb.Label(
+        container,
+        text=f"{cfg['COLLECTOR_NAME']} Product Collector",
+        font=("Arial", 16, "bold")
+    )
+    title.grid(row=0, column=0, columnspan=3, pady=(0, 10))
+
+    # Site info
+    site_label = tb.Label(
+        container,
+        text=f"Site: {cfg['COLLECTOR_ORIGIN']}",
+        font=("Arial", 10)
+    )
+    site_label.grid(row=1, column=0, columnspan=3, pady=(0, 20))
+
+    # Row counter
+    current_row = 2
+
+    # ========== Input File ==========
+    label_frame = tb.Frame(container)
+    label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
+
+    tb.Label(label_frame, text="Input File", anchor="w").pack(side="left")
+    help_icon = tb.Label(
+        label_frame,
+        text=" ⓘ ",
+        font=("Arial", 9),
+        foreground="#5BC0DE",
+        cursor="hand2"
+    )
+    help_icon.pack(side="left")
+    ToolTip(
+        help_icon,
+        text="Select the JSON file containing your product data.\n\nThis file should include product information with UPCs and names.\n\nTip: Use the Browse button to easily find your file.",
+        bootstyle="info"
+    )
+    tb.Label(label_frame, text=":", anchor="w").pack(side="left")
+
+    input_var = tb.StringVar(value=cfg.get("INPUT_FILE", ""))
+    tb.Entry(container, textvariable=input_var, width=50).grid(
+        row=current_row, column=1, sticky="ew", padx=5, pady=5
+    )
+
+    def browse_input():
         try:
-            if os.path.exists(CONFIG_PATH):
-                with open(CONFIG_PATH, 'r') as f:
-                    return json.load(f)
+            filename = filedialog.askopenfilename(
+                title="Select Input File",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            if filename:
+                input_var.set(filename)
+        except Exception as e:
+            messagebox.showerror("Browse Failed", f"Failed to open file dialog:\n\n{str(e)}")
+
+    tb.Button(
+        container,
+        text="Browse",
+        command=browse_input,
+        bootstyle="info-outline"
+    ).grid(row=current_row, column=2, padx=5, pady=5)
+
+    # Auto-save
+    def on_input_change(*args):
+        try:
+            cfg["INPUT_FILE"] = input_var.get()
+            save_config(cfg)
         except Exception:
             pass
-        return DEFAULTS.copy()
 
-    def save_config(self):
-        """Save current configuration."""
+    input_var.trace_add("write", on_input_change)
+    current_row += 1
+
+    # ========== Output File ==========
+    label_frame = tb.Frame(container)
+    label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
+
+    tb.Label(label_frame, text="Output File", anchor="w").pack(side="left")
+    help_icon = tb.Label(
+        label_frame,
+        text=" ⓘ ",
+        font=("Arial", 9),
+        foreground="#5BC0DE",
+        cursor="hand2"
+    )
+    help_icon.pack(side="left")
+    ToolTip(
+        help_icon,
+        text="Select where to save the enriched product data.\n\nThe output will be a JSON file with manufacturer data added.\n\nTip: Choose a different name than your input file to avoid overwriting.",
+        bootstyle="info"
+    )
+    tb.Label(label_frame, text=":", anchor="w").pack(side="left")
+
+    output_var = tb.StringVar(value=cfg.get("OUTPUT_FILE", ""))
+    tb.Entry(container, textvariable=output_var, width=50).grid(
+        row=current_row, column=1, sticky="ew", padx=5, pady=5
+    )
+
+    def browse_output():
         try:
-            config = {
-                "input_json_file": self.input_var.get(),
-                "output_json_file": self.output_var.get(),
-                "log_file": self.log_var.get(),
-            }
-            with open(CONFIG_PATH, 'w') as f:
-                json.dump(config, f, indent=2)
+            filename = filedialog.asksaveasfilename(
+                title="Select Output File",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                defaultextension=".json"
+            )
+            if filename:
+                output_var.set(filename)
         except Exception as e:
-            print(f"Error saving config: {e}")
+            messagebox.showerror("Browse Failed", f"Failed to open file dialog:\n\n{str(e)}")
 
-    def create_widgets(self):
-        """Create all GUI widgets."""
-        # Main container
-        main_frame = tb.Frame(self.root, padding=20)
-        main_frame.pack(fill=BOTH, expand=YES)
+    tb.Button(
+        container,
+        text="Browse",
+        command=browse_output,
+        bootstyle="info-outline"
+    ).grid(row=current_row, column=2, padx=5, pady=5)
 
-        # Title
-        title = tb.Label(
-            main_frame,
-            text="Purinamills Product Collector",
-            font=("Arial", 16, "bold"),
-            bootstyle="primary"
-        )
-        title.pack(pady=(0, 20))
+    # Auto-save
+    def on_output_change(*args):
+        try:
+            cfg["OUTPUT_FILE"] = output_var.get()
+            save_config(cfg)
+        except Exception:
+            pass
 
-        # Site info
-        info_frame = tb.Frame(main_frame)
-        info_frame.pack(fill=X, pady=(0, 20))
+    output_var.trace_add("write", on_output_change)
+    current_row += 1
 
-        tb.Label(
-            info_frame,
-            text=f"Site: {SITE_CONFIG['origin']}",
-            font=("Arial", 10)
-        ).pack()
+    # ========== Log File ==========
+    label_frame = tb.Frame(container)
+    label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
 
-        tb.Label(
-            info_frame,
-            text="Uses name-based fuzzy matching against product index",
-            font=("Arial", 9),
-            bootstyle="secondary"
-        ).pack()
+    tb.Label(label_frame, text="Log File", anchor="w").pack(side="left")
+    help_icon = tb.Label(
+        label_frame,
+        text=" ⓘ ",
+        font=("Arial", 9),
+        foreground="#5BC0DE",
+        cursor="hand2"
+    )
+    help_icon.pack(side="left")
+    ToolTip(
+        help_icon,
+        text="Select where to save the processing log.\n\nThis log file will contain detailed information about each product processed.\n\nTip: Logs are useful for debugging and tracking progress.",
+        bootstyle="info"
+    )
+    tb.Label(label_frame, text=":", anchor="w").pack(side="left")
 
-        # Input file
-        self.create_file_picker(
-            main_frame,
-            "Input JSON File:",
-            "input_var",
-            "Select Input JSON",
-            [("JSON files", "*.json")]
-        )
+    log_var = tb.StringVar(value=cfg.get("LOG_FILE", "logs/purinamills.log"))
+    tb.Entry(container, textvariable=log_var, width=50).grid(
+        row=current_row, column=1, sticky="ew", padx=5, pady=5
+    )
 
-        # Output file
-        self.create_file_picker(
-            main_frame,
-            "Output JSON File:",
-            "output_var",
-            "Select Output JSON",
-            [("JSON files", "*.json")],
-            save=True
-        )
+    def browse_log():
+        try:
+            filename = filedialog.asksaveasfilename(
+                title="Select Log File",
+                filetypes=[("Log files", "*.log"), ("Text files", "*.txt"), ("All files", "*.*")],
+                defaultextension=".log"
+            )
+            if filename:
+                log_var.set(filename)
+        except Exception as e:
+            messagebox.showerror("Browse Failed", f"Failed to open file dialog:\n\n{str(e)}")
 
-        # Log file
-        self.create_file_picker(
-            main_frame,
-            "Log File:",
-            "log_var",
-            "Select Log File",
-            [("Log files", "*.log"), ("All files", "*.*")],
-            save=True
-        )
+    tb.Button(
+        container,
+        text="Browse",
+        command=browse_log,
+        bootstyle="info-outline"
+    ).grid(row=current_row, column=2, padx=5, pady=5)
 
-        # Buttons
-        button_frame = tb.Frame(main_frame)
-        button_frame.pack(fill=X, pady=20)
+    # Auto-save
+    def on_log_change(*args):
+        try:
+            cfg["LOG_FILE"] = log_var.get()
+            save_config(cfg)
+        except Exception:
+            pass
 
-        self.run_button = tb.Button(
-            button_frame,
-            text="Run Collector",
-            command=self.run_collector,
-            bootstyle="success",
-            width=20
-        )
-        self.run_button.pack(side=LEFT, padx=5)
+    log_var.trace_add("write", on_log_change)
+    current_row += 1
 
-        self.stop_button = tb.Button(
-            button_frame,
-            text="Stop",
-            command=self.stop_collector,
-            bootstyle="danger",
-            width=20,
-            state=DISABLED
-        )
-        self.stop_button.pack(side=LEFT, padx=5)
+    # ========== Buttons ==========
+    button_frame = tb.Frame(app)
+    button_frame.pack(pady=10)
 
-        tb.Button(
-            button_frame,
-            text="Clear Log",
-            command=self.clear_log,
-            bootstyle="secondary",
-            width=15
-        ).pack(side=LEFT, padx=5)
+    def validate_inputs():
+        """Validate all required inputs."""
+        try:
+            if not input_var.get().strip():
+                messagebox.showerror("Validation Error", "Input File is required.")
+                return False
 
-        # Status/Log area
-        log_frame = tb.LabelFrame(
-            main_frame,
-            text="Status / Log Output",
-            padding=10
-        )
-        log_frame.pack(fill=BOTH, expand=YES, pady=(0, 10))
+            if not os.path.exists(input_var.get()):
+                messagebox.showerror("Validation Error", "Input File does not exist.")
+                return False
 
-        self.log_text = ScrolledText(
-            log_frame,
-            height=15,
-            font=("Courier", 9),
-            state=DISABLED
-        )
-        self.log_text.pack(fill=BOTH, expand=YES)
+            if not output_var.get().strip():
+                messagebox.showerror("Validation Error", "Output File is required.")
+                return False
 
-        # Progress
-        self.progress_var = tk.StringVar(value="Ready")
-        progress_label = tb.Label(
-            main_frame,
-            textvariable=self.progress_var,
-            font=("Arial", 10),
-            bootstyle="info"
-        )
-        progress_label.pack(pady=5)
+            if not log_var.get().strip():
+                messagebox.showerror("Validation Error", "Log File is required.")
+                return False
 
-        self.running = False
-        self.stop_requested = False
+            return True
+        except Exception as e:
+            messagebox.showerror("Validation Error", f"Unexpected error during validation:\n\n{str(e)}")
+            return False
 
-    def create_file_picker(self, parent, label_text, var_name, dialog_title, filetypes, save=False):
-        """Create a file picker row."""
-        frame = tb.Frame(parent)
-        frame.pack(fill=X, pady=5)
+    def clear_status():
+        """Clear status log."""
+        try:
+            status_log.config(state="normal")
+            status_log.delete("1.0", "end")
+            status_log.config(state="disabled")
+        except Exception as e:
+            logging.warning(f"Failed to clear status: {e}")
 
-        label = tb.Label(frame, text=label_text, width=20, anchor=W)
-        label.pack(side=LEFT, padx=(0, 10))
+    def status(msg):
+        """Thread-safe status update."""
+        try:
+            status_queue.put(msg)
+        except Exception as e:
+            logging.error(f"Failed to queue status message: {e}")
 
-        var = tk.StringVar()
-        setattr(self, var_name, var)
+    def start_processing():
+        """Start processing in worker thread."""
+        if not validate_inputs():
+            return
 
-        entry = tb.Entry(frame, textvariable=var)
-        entry.pack(side=LEFT, fill=X, expand=YES, padx=(0, 10))
+        # Clear status
+        clear_status()
 
-        def browse():
-            if save:
-                path = filedialog.asksaveasfilename(
-                    title=dialog_title,
-                    filetypes=filetypes
-                )
-            else:
-                path = filedialog.askopenfilename(
-                    title=dialog_title,
-                    filetypes=filetypes
-                )
-            if path:
-                var.set(path)
-                self.save_config()
+        # Disable buttons
+        start_btn.config(state="disabled")
 
-        browse_btn = tb.Button(
-            frame,
-            text="Browse...",
-            command=browse,
-            bootstyle="outline-primary",
-            width=12
-        )
-        browse_btn.pack(side=LEFT)
-
-    def populate_from_config(self):
-        """Populate fields from saved config."""
-        self.input_var.set(self.config.get("input_json_file", ""))
-        self.output_var.set(self.config.get("output_json_file", ""))
-        self.log_var.set(self.config.get("log_file", "logs/purinamills.log"))
-
-    def log(self, message):
-        """Add message to log."""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        full_message = f"[{timestamp}] {message}\n"
-
-        self.log_text.config(state=NORMAL)
-        self.log_text.insert(END, full_message)
-        self.log_text.see(END)
-        self.log_text.config(state=DISABLED)
-
-        # Also log to file if specified
-        log_file = self.log_var.get()
-        if log_file:
+        def worker():
+            """Background worker thread."""
             try:
-                os.makedirs(os.path.dirname(log_file), exist_ok=True)
-                with open(log_file, 'a', encoding='utf-8') as f:
-                    f.write(full_message)
-            except Exception:
-                pass
+                input_file = input_var.get()
+                output_file = output_var.get()
+                log_file = log_var.get()
 
-    def clear_log(self):
-        """Clear the log display."""
-        self.log_text.config(state=NORMAL)
-        self.log_text.delete(1.0, END)
-        self.log_text.config(state=DISABLED)
+                # Setup logging
+                log_dir = os.path.dirname(log_file)
+                if log_dir:
+                    os.makedirs(log_dir, exist_ok=True)
 
-    def run_collector(self):
-        """Run the collector in a separate thread."""
-        # Validate inputs
-        input_file = self.input_var.get()
-        output_file = self.output_var.get()
+                logging.basicConfig(
+                    filename=log_file,
+                    level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s'
+                )
 
-        if not input_file or not os.path.exists(input_file):
-            messagebox.showerror("Error", "Please select a valid input JSON file")
-            return
+                status("=" * 80)
+                status(f"{cfg['COLLECTOR_NAME']} Product Collector")
+                status("=" * 80)
+                status(f"Input: {input_file}")
+                status(f"Output: {output_file}")
+                status(f"Log: {log_file}")
+                status("")
 
-        if not output_file:
-            messagebox.showerror("Error", "Please specify an output JSON file")
-            return
+                # Load input
+                status("Loading input file...")
+                with open(input_file, 'r', encoding='utf-8') as f:
+                    products = json.load(f)
 
-        # Save config
-        self.save_config()
+                if not isinstance(products, list):
+                    raise ValueError("Input must be a JSON array of products")
 
-        # Start collection in thread
-        self.running = True
-        self.stop_requested = False
-        self.run_button.config(state=DISABLED)
-        self.stop_button.config(state=NORMAL)
+                status(f"Loaded {len(products)} products")
+                status("")
 
-        thread = threading.Thread(target=self.collect_products, daemon=True)
+                # Initialize collector
+                status("Initializing collector...")
+                collector = PurinamillsCollector()
+                status("✅ Collector initialized")
+                status("")
+
+                # Process products
+                enriched = []
+                success_count = 0
+                skip_count = 0
+                fail_count = 0
+
+                for i, product in enumerate(products):
+                    upc = product.get('upc_updated') or product.get('upc', '')
+                    name = product.get('description_1', '')
+
+                    status(f"[{i+1}/{len(products)}] Processing: {name} (UPC: {upc})")
+
+                    try:
+                        # TODO: Implement actual collection logic here
+                        # enriched_product = collector.enrich(product)
+                        enriched.append(product)
+                        success_count += 1
+                        status(f"  ✅ Processed successfully")
+                    except Exception as e:
+                        fail_count += 1
+                        status(f"  ❌ Error: {str(e)}")
+                        logging.exception(f"Error processing product {upc}:")
+                        enriched.append(product)  # Keep original on error
+
+                    status("")
+
+                # Save output
+                status(f"Saving results to {output_file}...")
+                output_dir = os.path.dirname(output_file)
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(enriched, f, indent=2, ensure_ascii=False)
+
+                status("")
+                status("=" * 80)
+                status("PROCESSING COMPLETE")
+                status("=" * 80)
+                status(f"✅ Successful: {success_count}")
+                status(f"⚠ Skipped: {skip_count}")
+                status(f"❌ Failed: {fail_count}")
+                status(f"Total: {len(products)}")
+                status("=" * 80)
+
+                messagebox.showinfo("Success", f"Processing complete!\n\n✅ Successful: {success_count}\n❌ Failed: {fail_count}")
+
+            except Exception as e:
+                status(f"\n❌ FATAL ERROR: {str(e)}")
+                logging.exception("Fatal error:")
+                messagebox.showerror("Error", f"Fatal error occurred:\n\n{str(e)}")
+            finally:
+                # ALWAYS re-enable buttons
+                button_control_queue.put("enable_buttons")
+
+        thread = threading.Thread(target=worker, daemon=True)
         thread.start()
 
-    def stop_collector(self):
-        """Request to stop the collector."""
-        self.stop_requested = True
-        self.log("Stop requested...")
-        self.stop_button.config(state=DISABLED)
+    start_btn = tb.Button(
+        button_frame,
+        text="Start Processing",
+        command=start_processing,
+        bootstyle="success"
+    )
+    start_btn.pack(side="left", padx=5)
 
-    def collect_products(self):
-        """Main collection logic (runs in thread)."""
+    exit_btn = tb.Button(
+        button_frame,
+        text="Exit",
+        command=app.quit,
+        bootstyle="secondary"
+    )
+    exit_btn.pack(side="left", padx=5)
+
+    # ========== Status Log ==========
+    status_label = tb.Label(app, text="Status Log:", anchor="w")
+    status_label.pack(anchor="w", padx=10, pady=(10, 0))
+
+    status_log = tb.Text(app, height=100, state="normal")
+    status_log.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    # ========== Queue Processor ==========
+    def process_queues():
+        """Process all pending messages from queues (runs in main thread)."""
         try:
-            input_file = self.input_var.get()
-            output_file = self.output_var.get()
-
-            self.log("=" * 60)
-            self.log("Starting Purinamills Product Collector")
-            self.log("=" * 60)
-            self.log(f"Input: {input_file}")
-            self.log(f"Output: {output_file}")
-
-            # Load input
-            self.log("Loading input file...")
-            with open(input_file, 'r', encoding='utf-8') as f:
-                products = json.load(f)
-
-            if not isinstance(products, list):
-                raise ValueError("Input must be a JSON array of products")
-
-            self.log(f"Loaded {len(products)} products")
-
-            # Initialize collector
-            self.log("Initializing collector...")
-            collector = PurinamillsCollector()
-
-            # Process products
-            enriched = []
-            for i, product in enumerate(products):
-                if self.stop_requested:
-                    self.log("Collection stopped by user")
+            # Process status messages
+            messages = []
+            while True:
+                try:
+                    msg = status_queue.get_nowait()
+                    messages.append(msg)
+                except queue.Empty:
                     break
 
-                upc = product.get('upc_updated') or product.get('upc', '')
-                name = product.get('description_1', '')
+            if messages:
+                status_log.config(state="normal")
+                for msg in messages:
+                    status_log.insert("end", msg + "\n")
+                status_log.see("end")
+                status_log.config(state="disabled")
+                status_log.update_idletasks()
 
-                self.progress_var.set(f"Processing {i+1}/{len(products)}: {name[:40]}")
-                self.log(f"\nProduct {i+1}/{len(products)}: {name} (UPC: {upc})")
-
+            # Process button control signals
+            while True:
                 try:
-                    # This is a placeholder - you'll need to implement the actual collection logic
-                    # based on how your collector works
-                    self.log(f"  ✓ Processed")
-                    enriched.append(product)
-
-                except Exception as e:
-                    self.log(f"  ✗ Error: {str(e)}")
-                    enriched.append(product)  # Keep original on error
-
-            # Save output
-            self.log(f"\nSaving results to {output_file}...")
-            os.makedirs(os.path.dirname(output_file), exist_ok=True)
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(enriched, f, indent=2, ensure_ascii=False)
-
-            self.log(f"✓ Saved {len(enriched)} products")
-            self.log("=" * 60)
-            self.log("Collection complete!")
-            self.progress_var.set("Complete")
-
-            messagebox.showinfo("Success", f"Processed {len(enriched)} products")
+                    signal = button_control_queue.get_nowait()
+                    if signal == "enable_buttons":
+                        start_btn.config(state="normal")
+                except queue.Empty:
+                    break
 
         except Exception as e:
-            self.log(f"\n✗ ERROR: {str(e)}")
-            self.progress_var.set("Error")
-            messagebox.showerror("Error", str(e))
+            logging.error(f"Error processing queues: {e}", exc_info=True)
 
-        finally:
-            self.running = False
-            self.run_button.config(state=NORMAL)
-            self.stop_button.config(state=DISABLED)
+        # Schedule next check (50ms = 20 times per second)
+        app.after(50, process_queues)
 
+    # Start queue processor
+    app.after(50, process_queues)
 
-def main():
-    """Launch the GUI."""
-    root = tb.Window(themename="flatly")
-    app = PurinamillsGUI(root)
-    root.mainloop()
+    # Initial welcome messages
+    status("=" * 80)
+    status(f"{cfg['COLLECTOR_NAME']} Product Collector v1.0.0")
+    status("GUI loaded successfully")
+    status("=" * 80)
+    status("")
+
+    # ========== Window Close Handler ==========
+    def on_closing():
+        """Handle window close event."""
+        try:
+            cfg["WINDOW_GEOMETRY"] = app.geometry()
+            save_config(cfg)
+        except Exception as e:
+            logging.warning(f"Failed to save window geometry: {e}")
+        app.quit()
+
+    app.protocol("WM_DELETE_WINDOW", on_closing)
+
+    # Start main loop
+    app.mainloop()
 
 
 if __name__ == "__main__":
-    main()
+    build_gui()
