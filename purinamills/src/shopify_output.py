@@ -9,12 +9,59 @@ from typing import Dict, Any, List, Optional
 
 
 def _clean_html(html: str) -> str:
-    """Clean HTML for Shopify compatibility."""
+    """
+    Clean HTML for Shopify compatibility.
+
+    Removes problematic attributes and ensures HTML is safe for Shopify.
+    Shopify supports standard HTML tags like <strong>, <i>, <ul>, <li>, <table>, etc.
+    """
     if not html:
         return ""
-    # Remove data-start, data-end attributes
-    html = re.sub(r'\s*data-(start|end)="[^"]*"', '', html)
-    return html
+
+    # Remove non-content tags (scripts, noscripts, images, svgs, buttons, divs used for layout)
+    html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<noscript[^>]*>.*?</noscript>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<svg[^>]*>.*?</svg>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<button[^>]*>.*?</button>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<img[^>]*>', '', html, flags=re.IGNORECASE)
+
+    # Remove divs and spans but keep their content
+    html = re.sub(r'</?div[^>]*>', '', html, flags=re.IGNORECASE)
+    html = re.sub(r'</?span[^>]*>', '', html, flags=re.IGNORECASE)
+
+    # Remove role, aria-*, and other accessibility attributes
+    html = re.sub(r'\s*role="[^"]*"', '', html)
+    html = re.sub(r'\s*aria-[a-z-]+="[^"]*"', '', html)
+
+    # Remove all data-* attributes (data-start, data-end, etc.)
+    html = re.sub(r'\s*data-[a-z-]+="[^"]*"', '', html)
+
+    # Remove other problematic attributes
+    # Remove style attributes (Shopify themes handle styling)
+    html = re.sub(r'\s*style="[^"]*"', '', html)
+
+    # Remove class attributes that might conflict with theme
+    html = re.sub(r'\s*class="[^"]*"', '', html)
+
+    # Remove id attributes
+    html = re.sub(r'\s*id="[^"]*"', '', html)
+
+    # Remove sizes, srcset, loading attributes (from images we didn't catch)
+    html = re.sub(r'\s*(sizes|srcset|loading|width|height|alt)="[^"]*"', '', html)
+
+    # Remove onclick and other event handlers
+    html = re.sub(r'\s*on[a-z]+="[^"]*"', '', html, flags=re.IGNORECASE)
+
+    # Clean up any double spaces that might have been created
+    html = re.sub(r'\s+', ' ', html)
+
+    # Clean up space before closing tags
+    html = re.sub(r'\s+>', '>', html)
+
+    # Clean up empty tags that might be left over
+    html = re.sub(r'<([a-z]+)>\s*</\1>', '', html, flags=re.IGNORECASE)
+
+    return html.strip()
 
 
 def _generate_alt_tags(product_name: str, variant_options: Dict[str, str]) -> str:
@@ -101,12 +148,19 @@ def generate_shopify_product(
         price = str(variant_record.get('sold_ext_price_adj', variant_record.get('avg_price_/_unit', '0')))
         price = price.replace('$', '').replace(',', '')
 
-        # Get SKU/UPC
-        sku = variant_record.get('upc', variant_record.get('upc_updated', f"PUR-{variant_position:04d}"))
+        # Get cost (maps to inventoryItem.cost in Shopify)
+        cost = str(variant_record.get('sold_ext_cost_adj', ''))
+        cost = cost.replace('$', '').replace(',', '') if cost else None
+
+        # Get SKU and barcode
+        # item_# → sku
+        # sku field from input → barcode
+        sku = variant_record.get('item_#', f"PUR-{variant_position:04d}")
+        barcode = variant_record.get('sku', variant_record.get('upc', variant_record.get('upc_updated', '')))
 
         # Build variant
         variant = {
-            "sku": sku,
+            "sku": str(sku),
             "price": price,
             "position": variant_position,
             "inventory_policy": "deny",
@@ -118,7 +172,7 @@ def generate_shopify_product(
             "option3": option3_value or None,
             "option4": option4_value or None,
             "taxable": True,
-            "barcode": sku,
+            "barcode": barcode,
             "grams": 0,
             "weight": 0,
             "weight_unit": "lb",
@@ -127,6 +181,10 @@ def generate_shopify_product(
             "metafields": [],
             "image_id": variant_position
         }
+
+        # Add cost if available (for Shopify's inventoryItem.cost field)
+        if cost:
+            variant["cost"] = cost
 
         # Add variant metafields
 

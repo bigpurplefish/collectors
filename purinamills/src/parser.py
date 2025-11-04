@@ -131,11 +131,11 @@ class PurinamillsParser:
         return variants
 
     def _extract_shop_images(self, soup: BeautifulSoup) -> List[str]:
-        """Extract full-size gallery images from shop site."""
+        """Extract full-size gallery images from shop site (gallery only)."""
         images = []
         seen = set()
 
-        # Look for JSON-LD product images
+        # Look for JSON-LD product images (these are typically gallery images)
         for script in soup.find_all('script', type='application/ld+json'):
             try:
                 data = json.loads(script.string)
@@ -155,14 +155,21 @@ class PurinamillsParser:
             except:
                 pass
 
-        # Extract from DOM - look for product gallery images
-        for img in soup.find_all('img'):
-            src = img.get('data-src') or img.get('src') or ''
-            if src and any(x in src for x in ['/products/', '/files/', 'cdn.shop']):
-                clean = self._clean_url(src, self.shop_origin)
-                if clean and clean not in seen and not any(x in clean.lower() for x in ['logo', 'icon', 'favicon']):
-                    images.append(clean)
-                    seen.add(clean)
+        # Only extract from gallery container if JSON-LD didn't provide images
+        if not images:
+            # Look specifically for product gallery/slider containers
+            gallery_containers = soup.find_all(['div', 'ul'], class_=lambda x: x and any(
+                term in str(x).lower() for term in ['gallery', 'slider', 'product-images', 'product-photos', 'thumbs']
+            ))
+
+            for container in gallery_containers:
+                for img in container.find_all('img'):
+                    src = img.get('data-src') or img.get('src') or ''
+                    if src and any(x in src for x in ['/products/', '/files/', 'cdn.shop']):
+                        clean = self._clean_url(src, self.shop_origin)
+                        if clean and clean not in seen and not any(x in clean.lower() for x in ['logo', 'icon', 'favicon']):
+                            images.append(clean)
+                            seen.add(clean)
 
         return images
 
