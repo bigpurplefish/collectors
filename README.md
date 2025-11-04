@@ -83,9 +83,45 @@ cd /Users/moosemarketer/Code/Python/collectors/bradley_caldwell
 # Verify it's activated
 python --version  # Should show Python 3.13.0
 
-# Run the collector
+# Install GUI dependencies (if using GUI)
+pip install -r requirements-gui.txt
+
+# Run the collector via command line
 python main.py --input input/products.json --output output/enriched.json
+
+# OR run via GUI
+python gui.py
 ```
+
+### Using the GUI
+
+Each collector includes a modern graphical interface built with ttkbootstrap:
+
+```bash
+# Navigate to any collector
+cd /Users/moosemarketer/Code/Python/collectors/purinamills
+
+# Install GUI dependencies (first time only)
+pip install -r requirements-gui.txt
+
+# Launch the GUI
+python gui.py
+```
+
+**GUI Features:**
+- File pickers for input/output JSON and log files
+- Real-time log output with timestamps
+- Run/Stop controls with threading (non-blocking)
+- Configuration persistence (saves your file paths)
+- Progress tracking during collection
+
+**GUI Workflow:**
+1. Click "Browse..." to select your input JSON file
+2. Click "Browse..." to specify output JSON location
+3. (Optional) Specify a log file path
+4. Click "Run Collector" to start processing
+5. Monitor progress in the log area
+6. Click "Stop" if you need to halt processing early
 
 ### Using Shared Utilities
 
