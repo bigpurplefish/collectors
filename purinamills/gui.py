@@ -573,13 +573,52 @@ def build_gui():
                 from time import sleep
                 from random import uniform
 
+                # Group products by parent field
+                # - If parent is blank: single product
+                # - If parent == item_#: parent product (first variant)
+                # - If parent != item_#: child variant
+                status("Grouping products by parent field...")
+                product_groups = []
+                processed_items = set()
+
+                for product in products:
+                    item_num = str(product.get('item_#', ''))
+                    parent = str(product.get('parent', '')).strip()
+
+                    # Skip if already processed as part of a group
+                    if item_num in processed_items:
+                        continue
+
+                    if not parent:
+                        # Single product (no variants)
+                        product_groups.append({
+                            'parent': product,
+                            'variants': []
+                        })
+                        processed_items.add(item_num)
+                    elif parent == item_num:
+                        # Parent product - find all its variants
+                        variants = [p for p in products if str(p.get('parent', '')).strip() == parent and str(p.get('item_#', '')) != parent]
+                        product_groups.append({
+                            'parent': product,
+                            'variants': variants
+                        })
+                        processed_items.add(item_num)
+                        for v in variants:
+                            processed_items.add(str(v.get('item_#', '')))
+
+                status(f"  ✓ Grouped {len(products)} products into {len(product_groups)} product(s)")
+                status("")
+
                 # Process products
                 enriched = []
                 success_count = 0
                 skip_count = 0
                 fail_count = 0
 
-                for i, product in enumerate(products):
+                for i, group in enumerate(product_groups):
+                    product = group['parent']
+                    variants = group['variants']
                     upc = product.get('upc_updated') or product.get('upc', '')
                     item_num = product.get('item_#', '')
                     name = product.get('description_1', '')
@@ -587,7 +626,8 @@ def build_gui():
                     # Calculate actual record number in original file
                     actual_record_num = start_idx + i + 1
 
-                    status(f"[{i+1}/{len(products)}] Record #{actual_record_num}: {name}")
+                    variant_info = f" ({len(variants) + 1} variants)" if variants else ""
+                    status(f"[{i+1}/{len(product_groups)}] Record #{actual_record_num}: {name}{variant_info}")
                     status(f"  UPC: {upc}")
 
                     # Check if already processed (skip mode)
@@ -671,6 +711,7 @@ def build_gui():
                         shopify_product = generate_shopify_product(
                             parsed_data=parsed_data,
                             input_data=product,
+                            variant_data=variants,  # Pass variant products from input file
                             log=status
                         )
 
@@ -708,11 +749,11 @@ def build_gui():
                 status(f"✅ Successful: {success_count}")
                 status(f"⚠ Skipped: {skip_count}")
                 status(f"❌ Failed: {fail_count}")
-                status(f"Total: {len(products)}")
+                status(f"Total: {len(product_groups)} product(s) from {len(products)} record(s)")
                 status("=" * 80)
 
                 # Queue messagebox to main thread
-                messagebox_queue.put(("info", "Success", f"Processing complete!\n\n✅ Successful: {success_count}\n⚠ Skipped: {skip_count}\n❌ Failed: {fail_count}"))
+                messagebox_queue.put(("info", "Success", f"Processing complete!\n\n✅ Successful: {success_count}\n⚠ Skipped: {skip_count}\n❌ Failed: {fail_count}\n\nProcessed {len(product_groups)} product(s) from {len(products)} record(s)"))
 
             except Exception as e:
                 status(f"\n❌ FATAL ERROR: {str(e)}")

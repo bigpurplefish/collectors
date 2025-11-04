@@ -39,6 +39,7 @@ def _generate_alt_tags(product_name: str, variant_options: Dict[str, str]) -> st
 def generate_shopify_product(
     parsed_data: Dict[str, Any],
     input_data: Dict[str, Any],
+    variant_data: List[Dict[str, Any]] = None,
     log: callable = print
 ) -> Dict[str, Any]:
     """
@@ -46,12 +47,14 @@ def generate_shopify_product(
 
     Args:
         parsed_data: Data extracted from website parser
-        input_data: Original input product data
+        input_data: Parent product data from input file
+        variant_data: List of variant products from input file (empty for single products)
         log: Logging function
 
     Returns:
         Dictionary with Shopify product structure
     """
+    import json as json_lib
 
     # Extract basic info
     title = parsed_data.get('title', input_data.get('description_1', 'Unknown Product'))
@@ -61,35 +64,47 @@ def generate_shopify_product(
     log(f"    - Title: {title}")
     log(f"    - Brand: {brand}")
 
-    # Extract variants (sizes)
-    source_variants = parsed_data.get('variants', [])
+    # Build variants from input file structure
+    # Combine parent + variant_data into all_variant_records
+    if variant_data is None:
+        variant_data = []
 
-    # If no variants from parser, create one from input data
-    if not source_variants:
-        size = input_data.get('size', '')
-        if size:
-            source_variants = [{
-                'size': size,
-                'price': input_data.get('sold_ext_price_adj', input_data.get('avg_price_/_unit', '0'))
-            }]
-        else:
-            source_variants = [{'size': 'Standard', 'price': '0'}]
+    all_variant_records = [input_data] + variant_data  # Parent is first variant
+
+    # Determine option fields from parent
+    option_1_field = input_data.get('option_1', '').strip()
+    option_2_field = input_data.get('option_2', '').strip()
+    option_3_field = input_data.get('option_3', '').strip()
+    option_4_field = input_data.get('option_4', '').strip()
+
+    log(f"    - Generating {len(all_variant_records)} variant(s)")
+    if option_1_field:
+        log(f"    - Option 1: {option_1_field}")
+    if option_2_field:
+        log(f"    - Option 2: {option_2_field}")
+    if option_3_field:
+        log(f"    - Option 3: {option_3_field}")
+    if option_4_field:
+        log(f"    - Option 4: {option_4_field}")
 
     # Build Shopify variants
     shopify_variants = []
-    variant_position = 1
 
-    for var in source_variants:
-        size = var.get('size', var.get('option_text', 'Standard'))
-        material = var.get('material', 'BG')
-        price = str(var.get('price', '0'))
+    for variant_position, variant_record in enumerate(all_variant_records, 1):
+        # Get option values from the fields specified in option_1-4
+        option1_value = variant_record.get(option_1_field, '') if option_1_field else ''
+        option2_value = variant_record.get(option_2_field, '') if option_2_field else ''
+        option3_value = variant_record.get(option_3_field, '') if option_3_field else ''
+        option4_value = variant_record.get(option_4_field, '') if option_4_field else ''
 
-        # Clean price (remove $ and commas)
+        # Get price
+        price = str(variant_record.get('sold_ext_price_adj', variant_record.get('avg_price_/_unit', '0')))
         price = price.replace('$', '').replace(',', '')
 
-        # Generate SKU from input data
-        sku = input_data.get('upc', input_data.get('upc_updated', f"PUR-{variant_position:04d}"))
+        # Get SKU/UPC
+        sku = variant_record.get('upc', variant_record.get('upc_updated', f"PUR-{variant_position:04d}"))
 
+        # Build variant
         variant = {
             "sku": sku,
             "price": price,
@@ -98,14 +113,16 @@ def generate_shopify_product(
             "compare_at_price": None,
             "fulfillment_service": "manual",
             "inventory_management": "shopify",
-            "option1": size,
-            "option2": material,
+            "option1": option1_value or None,
+            "option2": option2_value or None,
+            "option3": option3_value or None,
+            "option4": option4_value or None,
             "taxable": True,
             "barcode": sku,
             "grams": 0,
             "weight": 0,
             "weight_unit": "lb",
-            "inventory_quantity": int(input_data.get('inventory_qty', 0)),
+            "inventory_quantity": int(variant_record.get('inventory_qty', 0)),
             "requires_shipping": True,
             "metafields": [],
             "image_id": variant_position
@@ -114,7 +131,7 @@ def generate_shopify_product(
         # Add variant metafields
 
         # Model Number
-        model_number = input_data.get('item_#', sku)
+        model_number = variant_record.get('item_#', sku)
         if model_number:
             variant["metafields"].append({
                 "namespace": "custom",
@@ -123,12 +140,11 @@ def generate_shopify_product(
                 "type": "single_line_text_field"
             })
 
-        # Size Info (if we have size data)
-        if size and size != 'Standard':
-            import json as json_lib
+        # Size Info (if we have size data from option_1)
+        if option1_value and option_1_field == 'size':
             size_info = {
-                "label": size,
-                "weight": size  # e.g., "50 LB"
+                "label": option1_value,
+                "weight": option1_value  # e.g., "50 LB"
             }
             variant["metafields"].append({
                 "namespace": "custom",
@@ -138,30 +154,56 @@ def generate_shopify_product(
             })
 
         shopify_variants.append(variant)
-        variant_position += 1
 
     log(f"    - Created {len(shopify_variants)} variant(s)")
 
-    # Build product options
+    # Build product options based on option_1-4 fields
     options = []
 
-    # Option 1: Size
-    sizes = list(set([v['option1'] for v in shopify_variants]))
-    if sizes:
-        options.append({
-            "name": "Size",
-            "position": 1,
-            "values": sizes
-        })
+    # Option 1
+    if option_1_field:
+        values = list(set([v['option1'] for v in shopify_variants if v.get('option1')]))
+        if values:
+            # Capitalize field name for display
+            option_name = option_1_field.replace('_', ' ').title()
+            options.append({
+                "name": option_name,
+                "position": 1,
+                "values": values
+            })
 
-    # Option 2: Material/Package
-    materials = list(set([v['option2'] for v in shopify_variants]))
-    if materials and materials != ['BG']:
-        options.append({
-            "name": "Package",
-            "position": 2,
-            "values": materials
-        })
+    # Option 2
+    if option_2_field:
+        values = list(set([v['option2'] for v in shopify_variants if v.get('option2')]))
+        if values:
+            option_name = option_2_field.replace('_', ' ').title()
+            options.append({
+                "name": option_name,
+                "position": 2,
+                "values": values
+            })
+
+    # Option 3
+    if option_3_field:
+        values = list(set([v['option3'] for v in shopify_variants if v.get('option3')]))
+        if values:
+            option_name = option_3_field.replace('_', ' ').title()
+            options.append({
+                "name": option_name,
+                "position": 3,
+                "values": values
+            })
+
+    # Option 4
+    if option_4_field:
+        values = list(set([v['option4'] for v in shopify_variants if v.get('option4')]))
+        if values:
+            option_name = option_4_field.replace('_', ' ').title()
+            options.append({
+                "name": option_name,
+                "position": 4,
+                "values": values
+            })
 
     # Build images array
     images = []
