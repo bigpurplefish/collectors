@@ -188,8 +188,9 @@ def generate_shopify_product(
 
         # Add variant metafields
 
-        # Model Number
-        model_number = variant_record.get('item_#', sku)
+        # Model Number (only from scraped content, not from input file)
+        # Check if parsed_data has model_number for this variant
+        model_number = parsed_data.get('model_number')  # Will be None if not scraped
         if model_number:
             variant["metafields"].append({
                 "namespace": "custom",
@@ -333,7 +334,6 @@ def generate_shopify_product(
             "title": title,
             "body_html": description,
             "vendor": brand,
-            "product_type": input_data.get('department', 'Feed'),
             "published": True,
             "options": options,
             "variants": shopify_variants,

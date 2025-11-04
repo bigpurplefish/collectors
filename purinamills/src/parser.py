@@ -131,45 +131,67 @@ class PurinamillsParser:
         return variants
 
     def _extract_shop_images(self, soup: BeautifulSoup) -> List[str]:
-        """Extract full-size gallery images from shop site (gallery only)."""
+        """
+        Extract full-size gallery images from shop site (thumbnails only).
+
+        Parses the thumbnail gallery structure:
+        <ul class="thumbnail-list">
+          <li class="thumbnail-list__item">
+            <button class="thumbnail">
+              <img src="//shop.purinamills.com/cdn/shop/files/..." alt="..." />
+            </button>
+          </li>
+        </ul>
+        """
         images = []
         seen = set()
 
-        # Look for JSON-LD product images (these are typically gallery images)
-        for script in soup.find_all('script', type='application/ld+json'):
-            try:
-                data = json.loads(script.string)
-                if isinstance(data, dict) and data.get('@type') == 'Product':
-                    imgs = data.get('image', [])
-                    if isinstance(imgs, list):
-                        for img_url in imgs:
-                            clean = self._clean_url(str(img_url), self.shop_origin)
-                            if clean and clean not in seen:
-                                images.append(clean)
-                                seen.add(clean)
-                    elif isinstance(imgs, str):
-                        clean = self._clean_url(imgs, self.shop_origin)
+        # Primary method: Extract from thumbnail gallery
+        # Look for thumbnail list (the authoritative source for gallery images)
+        thumbnail_list = soup.find('ul', class_=lambda x: x and 'thumbnail-list' in str(x))
+
+        if thumbnail_list:
+            # Find all thumbnail buttons
+            for li in thumbnail_list.find_all('li', class_=lambda x: x and 'thumbnail-list__item' in str(x)):
+                # Find the img inside the button
+                img = li.find('img')
+                if img:
+                    src = img.get('src') or ''
+                    if src:
+                        # Clean and add the URL
+                        # Remove size parameters to get full-size image
+                        # Example: //shop.purinamills.com/cdn/shop/files/image.jpg?v=1748440581&width=416
+                        # Should become: //shop.purinamills.com/cdn/shop/files/image.jpg?v=1748440581
+                        clean = self._clean_url(src, self.shop_origin)
+                        # Remove width parameter but keep version parameter
+                        clean = re.sub(r'&width=\d+', '', clean)
+                        clean = re.sub(r'\?width=\d+&', '?', clean)
+                        clean = re.sub(r'\?width=\d+$', '', clean)
+
                         if clean and clean not in seen:
                             images.append(clean)
                             seen.add(clean)
-            except:
-                pass
 
-        # Only extract from gallery container if JSON-LD didn't provide images
+        # Fallback: If no thumbnails found, try JSON-LD
         if not images:
-            # Look specifically for product gallery/slider containers
-            gallery_containers = soup.find_all(['div', 'ul'], class_=lambda x: x and any(
-                term in str(x).lower() for term in ['gallery', 'slider', 'product-images', 'product-photos', 'thumbs']
-            ))
-
-            for container in gallery_containers:
-                for img in container.find_all('img'):
-                    src = img.get('data-src') or img.get('src') or ''
-                    if src and any(x in src for x in ['/products/', '/files/', 'cdn.shop']):
-                        clean = self._clean_url(src, self.shop_origin)
-                        if clean and clean not in seen and not any(x in clean.lower() for x in ['logo', 'icon', 'favicon']):
-                            images.append(clean)
-                            seen.add(clean)
+            for script in soup.find_all('script', type='application/ld+json'):
+                try:
+                    data = json.loads(script.string)
+                    if isinstance(data, dict) and data.get('@type') == 'Product':
+                        imgs = data.get('image', [])
+                        if isinstance(imgs, list):
+                            for img_url in imgs:
+                                clean = self._clean_url(str(img_url), self.shop_origin)
+                                if clean and clean not in seen:
+                                    images.append(clean)
+                                    seen.add(clean)
+                        elif isinstance(imgs, str):
+                            clean = self._clean_url(imgs, self.shop_origin)
+                            if clean and clean not in seen:
+                                images.append(clean)
+                                seen.add(clean)
+                except:
+                    pass
 
         return images
 
