@@ -9,12 +9,12 @@ import os
 import sys
 from typing import Dict, Any
 
-# Add parent directory to path for shared imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+# Add parent directories to path for shared imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from .index import ProductIndexer
-from .search import PurinamillsSearcher
-from .parser import PurinamillsParser
+from src.index import ProductIndexer
+from src.search import PurinamillsSearcher
+from src.parser import PurinamillsParser
 
 
 # Site Configuration (embedded from profile)
@@ -93,21 +93,3 @@ class PurinamillsCollector:
             Dictionary with extracted product data
         """
         return self.parser.parse_page(html_text)
-
-
-def main():
-    """CLI entry point."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Purinamills Product Collector")
-    parser.add_argument("--input", required=True, help="Path to input JSON file")
-    parser.add_argument("--output", required=True, help="Path to output JSON file")
-
-    args = parser.parse_args()
-
-    # Implementation here
-    print(f"Processing {args.input} -> {args.output}")
-
-
-if __name__ == "__main__":
-    main()
