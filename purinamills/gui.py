@@ -795,28 +795,15 @@ def build_gui():
                                     status("")
                                     continue
 
-                                # Save the image
-                                from PIL import Image
-                                import hashlib
-
-                                # Create images directory
-                                images_dir = os.path.join(os.path.dirname(output_file), "images")
-                                os.makedirs(images_dir, exist_ok=True)
-
-                                # Generate filename from UPC
-                                image_filename = f"{upc}_upcitemdb.jpg"
-                                image_path = os.path.join(images_dir, image_filename)
-
-                                # Save image
-                                best_image.save(image_path, "JPEG", quality=95)
-                                status(f"  ✓ Saved image: {image_filename}")
+                                # Store the URL (don't save image at this stage)
+                                status(f"  ✓ Selected best image: {best_url[:80]}...")
 
                                 # Create fallback parsed_data structure
                                 parsed_data = {
                                     'title': product.get('description_1', ''),
                                     'description': product.get('upcitemdb_description', ''),
                                     'vendor': 'Purina',
-                                    'gallery_images': [image_filename],
+                                    'gallery_images': [best_url],  # Store URL instead of filename
                                     'site_source': 'upcitemdb',
                                     'variants': [],  # Will be generated from input data
                                     'features_benefits': None,

@@ -157,9 +157,11 @@ When using UPCItemDB fallback, map data as follows:
 | `title` | `description_1` | Input file field |
 | `descriptionHtml` | `upcitemdb_description` | Plain text from UPCItemDB |
 | `vendor` | Manufacturer name | `"Purina"`, `"Kong"`, etc. |
-| `media` | Selected best image | Single image after quality check |
+| `media` | Selected best image URL | URL to highest quality image |
 | `variants` | Input data | Generated from input file variants |
 | `status` | `"ACTIVE"` | Always active for new products |
+
+**Note:** Images are stored as URLs in the output JSON. The uploader will download and process images when uploading to Shopify.
 
 ### Excluded Fields
 
@@ -298,16 +300,15 @@ if not product_url:
             })
             continue
 
-        # 5. Save image
-        image_filename = f"{upc}_upcitemdb.jpg"
-        best_image.save(f"output/images/{image_filename}", "JPEG", quality=95)
+        # 5. Store image URL (don't save image at this stage)
+        # Image will be downloaded/processed by uploader
 
         # 6. Create fallback product data
         parsed_data = {
             'title': product.get('description_1', ''),
             'description': product.get('upcitemdb_description', ''),
             'vendor': 'YourManufacturer',  # Replace with actual
-            'gallery_images': [image_filename],
+            'gallery_images': [best_url],  # Store URL, not filename
             'site_source': 'upcitemdb',
             'variants': [],
             'features_benefits': None,
