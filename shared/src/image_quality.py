@@ -93,6 +93,22 @@ def is_placeholder(image: Image.Image, placeholders: List[Image.Image], threshol
     return any(image_hash - imagehash.phash(ph) <= threshold for ph in placeholders)
 
 
+def strip_querystring(url: str) -> str:
+    """
+    Strip querystring parameters from URL.
+
+    Args:
+        url: URL potentially with querystring
+
+    Returns:
+        URL without querystring
+    """
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(url)
+    # Remove query and fragment
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
+
+
 def download_image(url: str, retries: int = 1, delay: int = 2) -> Optional[Image.Image]:
     """
     Download image from URL with retry logic.
@@ -169,16 +185,38 @@ def select_best_image(
 
     log(f"  Evaluating {len(image_urls)} candidate image(s)...")
 
-    for url in image_urls:
-        # Download image
-        img = download_image(url)
+    for original_url in image_urls:
+        # Strip querystring and test that version first
+        stripped_url = strip_querystring(original_url)
+
+        # Try stripped URL first (preferred)
+        img = None
+        final_url = None
+
+        if stripped_url != original_url:
+            log(f"    Testing stripped URL: {stripped_url[:60]}...")
+            img = download_image(stripped_url)
+            if img is not None:
+                final_url = stripped_url
+                log(f"    ✓ Stripped URL works, using it")
+            else:
+                log(f"    ✗ Stripped URL failed, trying original...")
+                img = download_image(original_url)
+                if img is not None:
+                    final_url = original_url
+                    log(f"    ✓ Original URL works")
+        else:
+            # No querystring to strip
+            img = download_image(original_url)
+            final_url = original_url
+
         if img is None:
-            log(f"    ✗ Failed to download: {url[:60]}...")
+            log(f"    ✗ Failed to download: {original_url[:60]}...")
             continue
 
         # Check if placeholder
         if is_placeholder(img, placeholders, hamming_threshold):
-            log(f"    ✗ Placeholder detected: {url[:60]}...")
+            log(f"    ✗ Placeholder detected: {final_url[:60]}...")
             continue
 
         # Crop whitespace
@@ -187,7 +225,7 @@ def select_best_image(
         # Calculate sharpness
         lap_score = calculate_laplacian_score(cropped)
         if lap_score < laplacian_threshold:
-            log(f"    ✗ Low quality (score={lap_score:.1f}): {url[:60]}...")
+            log(f"    ✗ Low quality (score={lap_score:.1f}): {final_url[:60]}...")
             continue
 
         # Calculate dimensions
@@ -198,7 +236,7 @@ def select_best_image(
             best_image = cropped
             best_score = lap_score
             best_dim = dim
-            best_source_url = url
+            best_source_url = final_url  # Use the working URL (stripped or original)
             log(f"    ✓ New best: {cropped.width}x{cropped.height}, score={lap_score:.1f}")
 
     if best_image:

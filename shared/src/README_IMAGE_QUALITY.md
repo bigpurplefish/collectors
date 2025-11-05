@@ -15,6 +15,7 @@ This module provides functions to evaluate and select the best product image fro
 - ✅ **Sharpness Detection**: Laplacian variance to measure image focus
 - ✅ **Placeholder Detection**: Perceptual hashing to identify generic/placeholder images
 - ✅ **Whitespace Cropping**: Remove borders for accurate size measurement
+- ✅ **Querystring Stripping**: Automatic removal of URL parameters with fallback to original
 - ✅ **Smart Selection**: Prioritize larger, sharper images
 - ✅ **Error Handling**: Graceful handling of download failures and invalid images
 - ✅ **Logging**: Detailed output for debugging selection process
@@ -130,6 +131,34 @@ placeholder_images/
 
 ---
 
+### `strip_querystring(url: str) -> str`
+
+Strip querystring parameters and fragments from URL.
+
+**Parameters:**
+- `url`: URL potentially with querystring parameters
+
+**Returns:**
+- URL without querystring or fragment
+
+**Example:**
+```python
+from shared.src.image_quality import strip_querystring
+
+original = "https://cdn.example.com/image.jpg?width=500&height=500#anchor"
+clean = strip_querystring(original)
+print(clean)  # "https://cdn.example.com/image.jpg"
+```
+
+**Usage in select_best_image:**
+The function automatically:
+1. Strips querystring from each URL
+2. Tests stripped version first (preferred)
+3. Falls back to original URL if stripped version fails
+4. Returns the working URL (stripped or original) in output
+
+---
+
 ### `is_placeholder(image: Image.Image, placeholders: List[Image.Image], threshold: int = 10) -> bool`
 
 Check if an image matches known placeholder images using perceptual hashing.
@@ -220,12 +249,14 @@ def select_best_image(
 - Tuple of (best_image, source_url) or (None, None)
 
 **Selection Criteria (in order):**
-1. Download & validate
-2. Detect and skip placeholder images
-3. Crop whitespace
-4. Check sharpness (Laplacian score)
-5. Prefer larger dimensions
-6. Use sharpness as tiebreaker
+1. Strip querystring from URL and test (prefer clean URLs)
+2. Download & validate (try stripped first, fallback to original)
+3. Detect and skip placeholder images
+4. Crop whitespace
+5. Check sharpness (Laplacian score)
+6. Prefer larger dimensions
+7. Use sharpness as tiebreaker
+8. Return working URL (stripped or original)
 
 **Example:**
 ```python
