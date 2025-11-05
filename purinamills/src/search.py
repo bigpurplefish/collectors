@@ -12,6 +12,7 @@ import re
 from typing import Callable, Any, Optional, Dict, Set, List
 from urllib.parse import quote_plus, urlsplit
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import os
 import sys
 
@@ -161,7 +162,9 @@ class PurinamillsSearcher:
         log: Callable[[str], None]
     ) -> List[Dict[str, Any]]:
         """
-        Search www.purinamills.com for products.
+        Search www.purinamills.com for products using Playwright.
+
+        The www site requires JavaScript, so we use Playwright instead of requests.
 
         Returns:
             List of product candidates with name, url, and keywords
@@ -170,14 +173,17 @@ class PurinamillsSearcher:
             url = f"{self.www_origin}{self.www_search_path}?{self.www_search_param}={quote_plus(query)}"
             log(f"[PurinaMills]   → Searching www.purinamills.com: '{query}'")
 
-            response = http_get(url, timeout=timeout)
-            html_text = response.text if hasattr(response, 'text') else str(response)
+            # Use Playwright to fetch JavaScript-rendered search results
+            html_text = self._fetch_with_playwright(url, timeout * 1000)  # Convert to milliseconds
 
             soup = BeautifulSoup(html_text, "html.parser")
             candidates = []
             seen = set()
 
             # Look for product detail links
+            # Build a dict of url -> name, keeping the best name for each URL
+            url_to_name = {}
+
             for a in soup.find_all("a", href=True):
                 href = a["href"].strip()
                 if "/products/detail/" not in href and "/product/" not in href:
@@ -185,10 +191,6 @@ class PurinamillsSearcher:
 
                 full_url = self._abs_url(href, self.www_origin)
                 clean_url = urlsplit(full_url)._replace(query="", fragment="").geturl()
-
-                if clean_url in seen:
-                    continue
-                seen.add(clean_url)
 
                 # Extract product name
                 name = a.get_text(" ", strip=True)
@@ -199,7 +201,15 @@ class PurinamillsSearcher:
                         if heading:
                             name = heading.get_text(" ", strip=True)
 
+                # Keep the best name for this URL (prefer non-empty names)
                 if name:
+                    if clean_url not in url_to_name or not url_to_name[clean_url]:
+                        url_to_name[clean_url] = name
+
+            # Convert to candidates list
+            for clean_url, name in url_to_name.items():
+                if name and clean_url not in seen:
+                    seen.add(clean_url)
                     kw = self._keyword_set(name)
                     candidates.append({
                         "name": name,
@@ -217,6 +227,33 @@ class PurinamillsSearcher:
         except Exception as e:
             log(f"[PurinaMills]   ✗ WWW site search failed: {e}")
             return []
+
+    def _fetch_with_playwright(self, url: str, timeout: int = 30000) -> str:
+        """
+        Fetch a URL using Playwright to handle JavaScript rendering.
+
+        Args:
+            url: URL to fetch
+            timeout: Timeout in milliseconds (default 30000)
+
+        Returns:
+            HTML content after JavaScript execution
+        """
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                )
+                page = context.new_page()
+                page.goto(url, timeout=timeout, wait_until="networkidle")
+                html = page.content()
+                browser.close()
+                return html
+        except PlaywrightTimeoutError:
+            return ""
+        except Exception:
+            return ""
 
     def find_product_url(
         self,

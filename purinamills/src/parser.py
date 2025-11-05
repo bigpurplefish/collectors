@@ -9,6 +9,7 @@ import re
 import json
 from typing import Dict, Any, List, Optional
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import os
 import sys
 
@@ -29,6 +30,31 @@ class PurinamillsParser:
         """
         self.shop_origin = config.get("shop_origin", "https://shop.purinamills.com")
         self.www_origin = config.get("www_origin", "https://www.purinamills.com")
+
+    def fetch_www_page_with_playwright(self, url: str, timeout: int = 30000) -> str:
+        """
+        Fetch a www.purinamills.com page using Playwright (handles JavaScript rendering).
+
+        Args:
+            url: URL to fetch
+            timeout: Timeout in milliseconds (default 30000)
+
+        Returns:
+            HTML content after JavaScript execution
+        """
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.goto(url, timeout=timeout, wait_until="networkidle")
+                html = page.content()
+                browser.close()
+                return html
+        except PlaywrightTimeoutError:
+            return ""
+        except Exception as e:
+            print(f"Error fetching www page with Playwright: {e}")
+            return ""
 
     def _clean_url(self, url: str, origin: str) -> str:
         """Clean and normalize URL, removing size parameters."""
@@ -129,6 +155,146 @@ class PurinamillsParser:
                     pass
 
         return variants
+
+    def _extract_shop_variant_image_map(self, soup: BeautifulSoup) -> Dict[str, Any]:
+        """
+        Extract variant-to-image mapping from shop site JavaScript product data.
+
+        Returns dict with:
+        - 'images': List of all product images with positions
+        - 'variant_image_map': Dict mapping variant options to image position
+        """
+        import json
+
+        # Look for product JSON in scripts
+        for script in soup.find_all('script'):
+            if script.string and 'variants' in script.string and 'featured_image' in script.string:
+                try:
+                    # Extract JSON product data
+                    json_match = re.search(r'var\s+\w+\s*=\s*(\{.*?\});?\s*$', script.string, re.MULTILINE | re.DOTALL)
+                    if json_match:
+                        data = json.loads(json_match.group(1))
+                        if 'variants' in data:
+                            # Build variant-to-image mapping
+                            variant_image_map = {}
+                            all_images = []
+
+                            # Track all unique images by position
+                            images_by_position = {}
+
+                            for var in data.get('variants', []):
+                                if isinstance(var, dict):
+                                    # Get variant options
+                                    option1 = var.get('option1', '')
+                                    option2 = var.get('option2', '')
+                                    option3 = var.get('option3', '')
+
+                                    # Create variant key from options
+                                    variant_key = f"{option1}|{option2}|{option3}".strip('|')
+
+                                    # Get featured image for this variant
+                                    featured_img = var.get('featured_image') or var.get('featured_media', {})
+                                    if featured_img:
+                                        img_position = featured_img.get('position', 0)
+                                        img_src = featured_img.get('src', '')
+                                        img_alt = featured_img.get('alt', '')
+
+                                        # Clean and normalize image URL
+                                        if img_src:
+                                            img_src = self._clean_url(img_src, self.shop_origin)
+
+                                            # Store variant-to-image mapping
+                                            variant_image_map[variant_key] = {
+                                                'position': img_position,
+                                                'src': img_src,
+                                                'alt': img_alt,
+                                                'options': {
+                                                    'option1': option1,
+                                                    'option2': option2,
+                                                    'option3': option3
+                                                }
+                                            }
+
+                                            # Collect unique images by position
+                                            if img_position not in images_by_position:
+                                                images_by_position[img_position] = {
+                                                    'position': img_position,
+                                                    'src': img_src,
+                                                    'alt': img_alt,
+                                                    'variant_keys': []
+                                                }
+
+                                            # Track which variants use this image
+                                            images_by_position[img_position]['variant_keys'].append(variant_key)
+
+                            # Get all product media (images, videos, etc.)
+                            for media in data.get('media', []):
+                                if isinstance(media, dict):
+                                    pos = media.get('position', 0)
+                                    media_type = media.get('media_type', 'image')
+
+                                    # Skip if already processed (variant-specific image)
+                                    if pos in images_by_position:
+                                        continue
+
+                                    # Handle different media types
+                                    if media_type == 'image':
+                                        src = media.get('src', '')
+                                        alt = media.get('alt', '')
+
+                                        if src:
+                                            src = self._clean_url(src, self.shop_origin)
+                                            images_by_position[pos] = {
+                                                'position': pos,
+                                                'src': src,
+                                                'alt': alt,
+                                                'media_type': 'image',
+                                                'variant_keys': []  # Shared across all variants
+                                            }
+
+                                    elif media_type == 'external_video':
+                                        # YouTube, Vimeo, etc.
+                                        host = media.get('host', '')  # 'youtube', 'vimeo'
+                                        external_id = media.get('external_id', '')
+                                        alt = media.get('alt', '')
+
+                                        if host and external_id:
+                                            images_by_position[pos] = {
+                                                'position': pos,
+                                                'src': f'https://www.youtube.com/watch?v={external_id}' if host == 'youtube' else f'https://vimeo.com/{external_id}',
+                                                'alt': alt,
+                                                'media_type': 'external_video',
+                                                'host': host,
+                                                'external_id': external_id,
+                                                'variant_keys': []  # Shared across all variants
+                                            }
+
+                                    elif media_type == 'video':
+                                        # Hosted video
+                                        sources = media.get('sources', [])
+                                        alt = media.get('alt', '')
+
+                                        if sources:
+                                            images_by_position[pos] = {
+                                                'position': pos,
+                                                'src': sources[0].get('url', '') if sources else '',
+                                                'alt': alt,
+                                                'media_type': 'video',
+                                                'sources': sources,
+                                                'variant_keys': []  # Shared across all variants
+                                            }
+
+                            # Convert to sorted list
+                            all_images = [images_by_position[pos] for pos in sorted(images_by_position.keys())]
+
+                            return {
+                                'images': all_images,
+                                'variant_image_map': variant_image_map
+                            }
+                except:
+                    pass
+
+        return {'images': [], 'variant_image_map': {}}
 
     def _extract_shop_images(self, soup: BeautifulSoup) -> List[str]:
         """
@@ -315,8 +481,22 @@ class PurinamillsParser:
         # Extract variants
         variants = self._extract_shop_variants(soup)
 
-        # Extract gallery images (full-size)
+        # Extract variant-to-image mapping from product JSON
+        variant_image_data = self._extract_shop_variant_image_map(soup)
+
+        # Extract gallery images (full-size) - fallback if no variant images found
         gallery_images = self._extract_shop_images(soup)
+
+        # Use variant images if available, otherwise use gallery images
+        if variant_image_data.get('images'):
+            images_data = variant_image_data
+        else:
+            # Fallback: convert gallery_images to simple format
+            images_data = {
+                'images': [{'position': i+1, 'src': img, 'alt': '', 'variant_keys': []}
+                          for i, img in enumerate(gallery_images)],
+                'variant_image_map': {}
+            }
 
         # Extract tab content
         tab_content = self._extract_shop_tab_content(soup)
@@ -326,7 +506,8 @@ class PurinamillsParser:
             "brand_hint": brand_hint,
             "description": description,
             "variants": variants,
-            "gallery_images": gallery_images,
+            "gallery_images": gallery_images,  # Legacy field for backwards compatibility
+            "images_data": images_data,  # New field with variant-image mapping
             "features_benefits": tab_content.get("features_benefits", ""),
             "nutrients": tab_content.get("nutrients", ""),
             "feeding_directions": tab_content.get("feeding_directions", ""),
@@ -351,23 +532,51 @@ class PurinamillsParser:
         return images
 
     def _extract_www_documents(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
-        """Extract documents from Additional Materials section."""
+        """
+        Extract documents from Additional Materials accordion section.
+
+        Looks for the accordion structure:
+        <ul class="accordion pd banner-accordion">
+          <li class="accordion-item">
+            <a class="accordion-title">Additional Materials</a>
+            <div class="accordion-content">
+              <p><a href="/getmedia/...">Document PDF</a></p>
+            </div>
+          </li>
+        </ul>
+        """
         documents = []
+        seen_urls = set()
 
-        # Look for document links (PDFs, etc.)
-        for link in soup.find_all('a', href=True):
-            href = link.get('href', '')
-            text = link.get_text(strip=True)
+        # Find the accordion with class containing "accordion"
+        accordion = soup.find('ul', class_=lambda x: x and 'accordion' in str(x).lower())
 
-            # Check if it's a document link
-            if any(ext in href.lower() for ext in ['.pdf', '.doc', '.docx', '/document/', '/media/']):
-                clean_url = self._clean_url(href, self.www_origin)
-                if clean_url:
-                    documents.append({
-                        'title': text or 'Document',
-                        'url': clean_url,
-                        'type': 'pdf' if '.pdf' in href.lower() else 'document'
-                    })
+        if accordion:
+            # Find accordion item with "Additional Materials" title
+            for item in accordion.find_all('li', class_=lambda x: x and 'accordion-item' in str(x).lower()):
+                title_link = item.find('a', class_=lambda x: x and 'accordion-title' in str(x).lower())
+
+                if title_link and 'additional materials' in title_link.get_text(strip=True).lower():
+                    # Found the Additional Materials section
+                    content_div = item.find('div', class_=lambda x: x and 'accordion-content' in str(x).lower())
+
+                    if content_div:
+                        # Extract all PDF links from this section
+                        for link in content_div.find_all('a', href=True):
+                            href = link.get('href', '')
+                            text = link.get_text(strip=True)
+
+                            # Check if it's a document link (getmedia, .pdf, etc.)
+                            if 'getmedia' in href.lower() or '.pdf' in href.lower():
+                                clean_url = self._clean_url(href, self.www_origin)
+
+                                if clean_url and clean_url not in seen_urls:
+                                    documents.append({
+                                        'title': text or 'Document',
+                                        'url': clean_url,
+                                        'type': 'pdf' if '.pdf' in href.lower() else 'document'
+                                    })
+                                    seen_urls.add(clean_url)
 
         return documents
 
@@ -399,18 +608,38 @@ class PurinamillsParser:
                     description = desc_text
                     break
 
-        # Extract features/benefits
+        # Extract features/benefits from accordion
         features_benefits = ""
-        feature_sections = soup.select('[class*="benefit"], [class*="feature"], [class*="key-point"]')
-        if feature_sections:
-            items = []
-            for section in feature_sections:
-                for li in section.find_all("li"):
-                    benefit_text = text_only(li.get_text(" ", strip=True))
-                    if benefit_text and len(benefit_text) > 15:
-                        items.append(benefit_text)
-            if items:
-                features_benefits = '<ul>\n' + '\n'.join(f'  <li>{item}</li>' for item in items) + '\n</ul>'
+        accordion = soup.find('ul', class_=lambda x: x and 'accordion' in str(x).lower())
+
+        if accordion:
+            # Find accordion item with "Features & Benefits" title
+            for item in accordion.find_all('li', class_=lambda x: x and 'accordion-item' in str(x).lower()):
+                title_link = item.find('a', class_=lambda x: x and 'accordion-title' in str(x).lower())
+
+                if title_link and 'features' in title_link.get_text(strip=True).lower() and 'benefits' in title_link.get_text(strip=True).lower():
+                    # Found the Features & Benefits section
+                    content_div = item.find('div', class_=lambda x: x and 'accordion-content' in str(x).lower())
+
+                    if content_div:
+                        # Extract all feature divs with h3 + p structure
+                        items = []
+                        for feature_div in content_div.find_all('div', recursive=False):
+                            h3 = feature_div.find('h3')
+                            p = feature_div.find('p')
+
+                            if h3:
+                                feature_title = text_only(h3.get_text(strip=True))
+                                feature_desc = text_only(p.get_text(strip=True)) if p else ""
+
+                                if feature_desc:
+                                    items.append(f"<strong>{feature_title}</strong>: {feature_desc}")
+                                else:
+                                    items.append(feature_title)
+
+                        if items:
+                            features_benefits = '<ul>\n' + '\n'.join(f'  <li>{item}</li>' for item in items) + '\n</ul>'
+                        break
 
         # Extract guaranteed analysis
         nutrients = ""

@@ -10,7 +10,10 @@ tests/
 ├── .gitignore          # Ignores test outputs
 ├── output/             # Test output files (ignored by git)
 │   └── .gitkeep
-└── test_*.py           # Test scripts (tracked by git)
+├── samples/            # Sample HTML pages for testing
+│   ├── shop.purina.com/
+│   └── www.purina.com/
+└── test_*.py           # Test scripts
 ```
 
 ## Purpose
@@ -25,19 +28,28 @@ Run tests from the project root:
 
 ```bash
 cd /Users/moosemarketer/Code/Python/collectors/purinamills
-python3 tests/test_example.py
+python3 tests/test_workflow.py
+python3 tests/test_www_search.py
 ```
 
 All test outputs will be written to `tests/output/` and automatically ignored by git.
 
-## Moving Existing Test Files
+## Test Scripts
 
-If you have test files in the project root, move them here:
+- `test_workflow.py` - End-to-end workflow testing
+- `test_www_search.py` - WWW site search testing
+- `test_www_search_direct.py` - Direct WWW search testing
+- `test_www_playwright.py` - Playwright-based testing
+- `test_variants.py` - Variant handling testing
+- `test_variant_images.py` - Variant image testing
 
-```bash
-mv test_*.py tests/
-mv test_*.html tests/output/
-```
+## Sample Data
+
+The `samples/` directory contains sample HTML pages from:
+- `shop.purina.com/` - E-commerce site samples
+- `www.purina.com/` - Information site samples
+
+These samples are used for offline testing and development.
 
 ## Best Practices
 

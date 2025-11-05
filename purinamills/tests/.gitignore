@@ -1,7 +1,3 @@
-# Test outputs - ignore everything except structure
-output/*
-!output/.gitkeep
-
 # Test data files
 *.json
 *.xlsx
@@ -12,3 +8,7 @@ output/*
 # But keep example/template files
 !*_template.json
 !*_sample.json
+
+# Ignore test outputs in output directory
+output/*
+!output/.gitkeep

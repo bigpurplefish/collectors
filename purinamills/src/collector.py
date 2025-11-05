@@ -28,7 +28,7 @@ SITE_CONFIG = {
     # Secondary information site (fallback)
     "www_origin": "https://www.purinamills.com",
     "www_search_path": "/search",
-    "www_search_param": "q",
+    "www_search_param": "s",
 
     # Legacy compatibility
     "origin": "https://shop.purinamills.com",
