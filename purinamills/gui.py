@@ -359,15 +359,26 @@ def build_gui():
     )
     tb.Label(label_frame, text=":", anchor="w").pack(side="left")
 
-    start_var = tb.StringVar(value=cfg.get("START_RECORD", ""))
-    tb.Entry(container, textvariable=start_var, width=50).grid(
-        row=current_row, column=1, sticky="ew", padx=5, pady=5
+    # Convert empty string or None to 0 for integer field
+    start_val = cfg.get("START_RECORD", "")
+    start_val = int(start_val) if start_val and str(start_val).strip() else 0
+    start_var = tb.IntVar(value=start_val)
+    tb.Spinbox(
+        container,
+        textvariable=start_var,
+        from_=0,
+        to=999999,
+        increment=1,
+        width=10
+    ).grid(
+        row=current_row, column=1, sticky="w", padx=5, pady=5
     )
 
     # Auto-save
     def on_start_change(*args):
         try:
-            cfg["START_RECORD"] = start_var.get()
+            val = start_var.get()
+            cfg["START_RECORD"] = "" if val == 0 else str(val)
             save_config(cfg)
         except Exception:
             pass
@@ -395,20 +406,74 @@ def build_gui():
     )
     tb.Label(label_frame, text=":", anchor="w").pack(side="left")
 
-    end_var = tb.StringVar(value=cfg.get("END_RECORD", ""))
-    tb.Entry(container, textvariable=end_var, width=50).grid(
-        row=current_row, column=1, sticky="ew", padx=5, pady=5
+    # Convert empty string or None to 0 for integer field
+    end_val = cfg.get("END_RECORD", "")
+    end_val = int(end_val) if end_val and str(end_val).strip() else 0
+    end_var = tb.IntVar(value=end_val)
+    tb.Spinbox(
+        container,
+        textvariable=end_var,
+        from_=0,
+        to=999999,
+        increment=1,
+        width=10
+    ).grid(
+        row=current_row, column=1, sticky="w", padx=5, pady=5
     )
 
     # Auto-save
     def on_end_change(*args):
         try:
-            cfg["END_RECORD"] = end_var.get()
+            val = end_var.get()
+            cfg["END_RECORD"] = "" if val == 0 else str(val)
             save_config(cfg)
         except Exception:
             pass
 
     end_var.trace_add("write", on_end_change)
+    current_row += 1
+
+    # ========== Laplacian Threshold ==========
+    label_frame = tb.Frame(container)
+    label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
+
+    tb.Label(label_frame, text="Laplacian Threshold", anchor="w").pack(side="left")
+    help_icon = tb.Label(
+        label_frame,
+        text=" ⓘ ",
+        font=("Arial", 9),
+        foreground="#5BC0DE",
+        cursor="hand2"
+    )
+    help_icon.pack(side="left")
+    ToolTip(
+        help_icon,
+        text="Minimum image sharpness score for UPCItemDB fallback images.\n\nImages below this threshold will be rejected as low quality.\nDefault: 100\n\nHigher values = stricter quality requirements.\nLower values = accept more images (including slightly blurry ones).",
+        bootstyle="info"
+    )
+    tb.Label(label_frame, text=":", anchor="w").pack(side="left")
+
+    laplacian_var = tb.IntVar(value=cfg.get("LAPLACIAN_THRESHOLD", 100))
+    tb.Spinbox(
+        container,
+        textvariable=laplacian_var,
+        from_=0,
+        to=500,
+        increment=10,
+        width=10
+    ).grid(
+        row=current_row, column=1, sticky="w", padx=5, pady=5
+    )
+
+    # Auto-save
+    def on_laplacian_change(*args):
+        try:
+            cfg["LAPLACIAN_THRESHOLD"] = laplacian_var.get()
+            save_config(cfg)
+        except Exception:
+            pass
+
+    laplacian_var.trace_add("write", on_laplacian_change)
     current_row += 1
 
     # ========== Buttons ==========
@@ -449,8 +514,11 @@ def build_gui():
             logging.warning(f"Failed to clear status: {e}")
 
     def status(msg):
-        """Thread-safe status update."""
+        """Thread-safe status update (also prints to console)."""
         try:
+            # Print to console for VS Code terminal visibility
+            print(msg)
+            # Queue for GUI status window
             status_queue.put(msg)
         except Exception as e:
             logging.error(f"Failed to queue status message: {e}")
@@ -473,8 +541,9 @@ def build_gui():
                 output_file = output_var.get()
                 log_file = log_var.get()
                 processing_mode = mode_var.get()
-                start_record_str = start_var.get().strip()
-                end_record_str = end_var.get().strip()
+                start_record_int = start_var.get()  # Already an integer
+                end_record_int = end_var.get()  # Already an integer
+                laplacian_threshold = laplacian_var.get()  # Already an integer
 
                 # Setup logging
                 log_dir = os.path.dirname(log_file)
@@ -494,26 +563,19 @@ def build_gui():
                 status(f"Output: {output_file}")
                 status(f"Log: {log_file}")
                 status(f"Processing Mode: {processing_mode.upper()}")
+                status(f"Laplacian Threshold: {laplacian_threshold}")
 
                 # Parse start/end record
                 start_idx = 0
                 end_idx = None
-                if start_record_str:
-                    try:
-                        start_idx = int(start_record_str) - 1  # Convert to 0-based
-                        if start_idx < 0:
-                            start_idx = 0
-                        status(f"Start Record: {start_idx + 1}")
-                    except ValueError:
-                        status(f"⚠ Invalid start record '{start_record_str}', using 1")
 
-                if end_record_str:
-                    try:
-                        end_idx = int(end_record_str)  # Keep as 1-based for slicing
-                        status(f"End Record: {end_idx}")
-                    except ValueError:
-                        status(f"⚠ Invalid end record '{end_record_str}', processing to end")
-                        end_idx = None
+                if start_record_int > 0:
+                    start_idx = start_record_int - 1  # Convert to 0-based
+                    status(f"Start Record: {start_record_int}")
+
+                if end_record_int > 0:
+                    end_idx = end_record_int  # Keep as 1-based for slicing
+                    status(f"End Record: {end_record_int}")
 
                 status("")
 
@@ -612,6 +674,7 @@ def build_gui():
 
                 # Process products
                 enriched = []
+                failed_records = []  # Track failed records for summary and error log
                 success_count = 0
                 skip_count = 0
                 fail_count = 0
@@ -654,10 +717,152 @@ def build_gui():
 
                         if not product_url:
                             status(f"  ⚠ Product not found on either site")
-                            enriched.append({"input": product, "product": None, "error": "Product not found"})
-                            fail_count += 1
-                            status("")
-                            continue
+
+                            # Check for UPCItemDB fallback
+                            upcitemdb_status = product.get('upcitemdb_status', '')
+
+                            if upcitemdb_status == "Lookup failed":
+                                error_msg = "Product not found and UPCItemDB lookup failed"
+                                status(f"  ⚠ Skipping: UPCItemDB lookup also failed")
+                                enriched.append({"input": product, "product": None, "error": error_msg})
+                                failed_records.append({
+                                    **product,  # Include all original fields
+                                    'error_reason': error_msg
+                                })
+                                fail_count += 1
+                                status("")
+                                continue
+
+                            elif upcitemdb_status == "Match found":
+                                status(f"  🔄 Falling back to UPCItemDB data...")
+
+                                # Load placeholder images for detection
+                                # Import from shared library
+                                parent_path = os.path.dirname(os.path.dirname(__file__))
+                                if parent_path not in sys.path:
+                                    sys.path.insert(0, parent_path)
+
+                                from shared.src.image_quality import load_placeholder_images, select_best_image
+                                placeholder_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "placeholder_images")
+                                placeholders = load_placeholder_images(placeholder_dir)
+
+                                # Get UPCItemDB image URLs
+                                import ast
+                                image_urls_raw = product.get('upcitemdb_images', [])
+
+                                # Parse if it's a string representation of a list
+                                if isinstance(image_urls_raw, str) and image_urls_raw:
+                                    try:
+                                        image_urls = ast.literal_eval(image_urls_raw)
+                                    except (ValueError, SyntaxError):
+                                        status(f"  ⚠ Could not parse UPCItemDB images: {image_urls_raw}")
+                                        image_urls = []
+                                elif isinstance(image_urls_raw, list):
+                                    image_urls = image_urls_raw
+                                else:
+                                    image_urls = []
+
+                                if not image_urls:
+                                    error_msg = "No UPCItemDB images available"
+                                    status(f"  ⚠ {error_msg}")
+                                    enriched.append({"input": product, "product": None, "error": error_msg})
+                                    failed_records.append({
+                                        **product,
+                                        'error_reason': error_msg
+                                    })
+                                    fail_count += 1
+                                    status("")
+                                    continue
+
+                                # Select best image
+                                best_image, best_url = select_best_image(
+                                    image_urls=image_urls,
+                                    placeholders=placeholders,
+                                    laplacian_threshold=laplacian_threshold,
+                                    hamming_threshold=10,
+                                    log=status
+                                )
+
+                                if not best_image:
+                                    error_msg = "No suitable UPCItemDB images (failed quality check)"
+                                    status(f"  ⚠ No suitable UPCItemDB images found")
+                                    enriched.append({"input": product, "product": None, "error": error_msg})
+                                    failed_records.append({
+                                        **product,
+                                        'error_reason': error_msg
+                                    })
+                                    fail_count += 1
+                                    status("")
+                                    continue
+
+                                # Save the image
+                                from PIL import Image
+                                import hashlib
+
+                                # Create images directory
+                                images_dir = os.path.join(os.path.dirname(output_file), "images")
+                                os.makedirs(images_dir, exist_ok=True)
+
+                                # Generate filename from UPC
+                                image_filename = f"{upc}_upcitemdb.jpg"
+                                image_path = os.path.join(images_dir, image_filename)
+
+                                # Save image
+                                best_image.save(image_path, "JPEG", quality=95)
+                                status(f"  ✓ Saved image: {image_filename}")
+
+                                # Create fallback parsed_data structure
+                                parsed_data = {
+                                    'title': product.get('description_1', ''),
+                                    'description': product.get('upcitemdb_description', ''),
+                                    'vendor': 'Purina',
+                                    'gallery_images': [image_filename],
+                                    'site_source': 'upcitemdb',
+                                    'variants': [],  # Will be generated from input data
+                                    'features_benefits': None,
+                                    'nutrients': None,
+                                    'feeding_directions': None,
+                                    'documents': []
+                                }
+
+                                status(f"  ✓ Created fallback product data from UPCItemDB")
+
+                                # Continue to Shopify output generation (skip steps 2-4)
+                                status(f"  🏗️  Generating Shopify product structure...")
+
+                                # Import the output generator
+                                sys.path.insert(0, os.path.dirname(__file__))
+                                from src.shopify_output import generate_shopify_product
+
+                                shopify_product = generate_shopify_product(
+                                    parsed_data=parsed_data,
+                                    input_data=product,
+                                    variant_data=variants,
+                                    log=status
+                                )
+
+                                status(f"  ✓ Generated product with {len(shopify_product.get('product', {}).get('variants', []))} variant(s)")
+
+                                enriched.append(shopify_product)
+                                success_count += 1
+                                status(f"  ✅ Successfully processed with UPCItemDB fallback")
+
+                                # Rate limiting
+                                sleep(uniform(0.2, 0.7))
+                                status("")
+                                continue
+
+                            else:
+                                # No fallback available
+                                error_msg = "Product not found"
+                                enriched.append({"input": product, "product": None, "error": error_msg})
+                                failed_records.append({
+                                    **product,
+                                    'error_reason': error_msg
+                                })
+                                fail_count += 1
+                                status("")
+                                continue
 
                         status(f"  ✓ Found: {product_url}")
 
@@ -726,10 +931,15 @@ def build_gui():
 
                     except Exception as e:
                         fail_count += 1
-                        status(f"  ❌ Error: {str(e)}")
+                        error_msg = str(e)
+                        status(f"  ❌ Error: {error_msg}")
                         logging.exception(f"Error processing product {upc}:")
                         # Keep original input with error info
-                        enriched.append({"input": product, "product": None, "error": str(e)})
+                        enriched.append({"input": product, "product": None, "error": error_msg})
+                        failed_records.append({
+                            **product,
+                            'error_reason': error_msg
+                        })
 
                     status("")
 
@@ -742,6 +952,32 @@ def build_gui():
                 with open(output_file, 'w', encoding='utf-8') as f:
                     json.dump(enriched, f, indent=2, ensure_ascii=False)
 
+                # Save error log if there are failed records
+                if failed_records:
+                    error_log_file = output_file.replace('.json', '_errors.xlsx')
+                    status(f"Saving error log to {error_log_file}...")
+
+                    try:
+                        import openpyxl
+                        wb = openpyxl.Workbook()
+                        ws = wb.active
+                        ws.title = "Failed Records"
+
+                        # Write headers (all fields from first record)
+                        if failed_records:
+                            headers = list(failed_records[0].keys())
+                            ws.append(headers)
+
+                            # Write data rows
+                            for record in failed_records:
+                                row = [record.get(header, '') for header in headers]
+                                ws.append(row)
+
+                        wb.save(error_log_file)
+                        status(f"  ✓ Error log saved: {len(failed_records)} failed record(s)")
+                    except Exception as e:
+                        status(f"  ⚠ Could not save error log: {str(e)}")
+
                 status("")
                 status("=" * 80)
                 status("PROCESSING COMPLETE")
@@ -750,6 +986,22 @@ def build_gui():
                 status(f"⚠ Skipped: {skip_count}")
                 status(f"❌ Failed: {fail_count}")
                 status(f"Total: {len(product_groups)} product(s) from {len(products)} record(s)")
+
+                # Print failed records summary
+                if failed_records:
+                    status("")
+                    status("=" * 80)
+                    status("FAILED RECORDS SUMMARY")
+                    status("=" * 80)
+                    for record in failed_records:
+                        item_num = record.get('item_#', 'N/A')
+                        desc = record.get('description_1', 'N/A')
+                        error = record.get('error_reason', 'Unknown error')
+                        status(f"  Item #{item_num}: {desc}")
+                        status(f"    Error: {error}")
+                        status("")
+                    status(f"Error log saved to: {error_log_file}")
+
                 status("=" * 80)
 
                 # Queue messagebox to main thread
