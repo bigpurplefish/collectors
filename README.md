@@ -4,12 +4,38 @@ This directory contains individual product collector projects for each retailer/
 
 ## Project Structure
 
-Each collector project is fully self-contained with:
-- **collector.py**: Site-specific scraping and enrichment logic with embedded configuration
-- **requirements.txt**: Python dependencies
-- **CLAUDE.md**: AI assistant guidance and project documentation
-- **.python-version**: pyenv virtual environment configuration
-- **Virtual environment**: Isolated Python 3.13.0 environment
+Each collector follows Python best practices with a standard directory structure:
+
+```
+collector_name/
+├── main.py                      # Entry point (at project root)
+├── src/                         # All source code
+│   ├── __init__.py
+│   ├── collector.py             # Main orchestration
+│   ├── search.py                # Product discovery
+│   ├── parser.py                # HTML/data parsing
+│   └── [feature_modules].py     # Additional modules
+├── input/                       # Input files
+│   └── .gitkeep
+├── output/                      # Output files (gitignored)
+│   └── .gitkeep
+├── tests/                       # Test files
+│   └── .gitkeep
+├── docs/                        # Documentation
+│   └── CLAUDE.md                # AI assistant guidance
+├── logs/                        # Log files (gitignored)
+│   └── .gitkeep
+├── requirements.txt             # Python dependencies
+├── .python-version              # pyenv configuration
+├── .gitignore                   # Git ignore patterns
+└── README.md                    # Project documentation
+```
+
+**Key Features:**
+- Clean separation of code, data, tests, and docs
+- Industry-standard Python layout
+- Easy to understand and maintain
+- Supports testing and CI/CD
 
 ## Available Collectors
 
@@ -30,8 +56,20 @@ Each collector project is fully self-contained with:
 
 The `shared/` directory contains utilities used across multiple collectors:
 
-- **batcher.py**: Split/merge/sort JSON files, Excel ↔ JSON conversion
-- **json_to_excel_converter.py**: Type-aware JSON to Excel converter
+```
+shared/
+├── src/                         # Core utility modules
+│   ├── text_utils.py            # Text processing
+│   ├── image_utils.py           # Image URL handling
+│   ├── http_utils.py            # HTTP utilities
+│   ├── json_utils.py            # JSON operations
+│   └── upc_utils.py             # UPC processing
+├── utils/                       # Standalone tools
+│   ├── batcher.py               # Batch processing
+│   └── json_to_excel_converter.py  # Excel conversion
+└── docs/
+    └── README.md                # Utility documentation
+```
 
 ## Quick Start
 
@@ -45,18 +83,54 @@ cd /Users/moosemarketer/Code/Python/collectors/bradley_caldwell
 # Verify it's activated
 python --version  # Should show Python 3.13.0
 
-# Run the collector
-python collector.py --input products.json --output enriched.json
+# Install GUI dependencies (if using GUI)
+pip install -r requirements-gui.txt
+
+# Run the collector via command line
+python main.py --input input/products.json --output output/enriched.json
+
+# OR run via GUI
+python gui.py
 ```
+
+### Using the GUI
+
+Each collector includes a modern graphical interface built with ttkbootstrap:
+
+```bash
+# Navigate to any collector
+cd /Users/moosemarketer/Code/Python/collectors/purinamills
+
+# Install GUI dependencies (first time only)
+pip install -r requirements-gui.txt
+
+# Launch the GUI
+python gui.py
+```
+
+**GUI Features:**
+- File pickers for input/output JSON and log files
+- Real-time log output with timestamps
+- Run/Stop controls with threading (non-blocking)
+- Configuration persistence (saves your file paths)
+- Progress tracking during collection
+
+**GUI Workflow:**
+1. Click "Browse..." to select your input JSON file
+2. Click "Browse..." to specify output JSON location
+3. (Optional) Specify a log file path
+4. Click "Run Collector" to start processing
+5. Monitor progress in the log area
+6. Click "Stop" if you need to halt processing early
 
 ### Using Shared Utilities
 
 ```bash
 # From any collector project, reference the shared utilities
-python ../shared/batcher.py split --input large.json --outdir batches --size 50
+python ../shared/utils/batcher.py split --input large.json --outdir batches --size 50
 
 # Convert to Excel
-python ../shared/json_to_excel_converter.py
+python ../shared/utils/json_to_excel_converter.py
 ```
 
 ## Development
