@@ -25,6 +25,12 @@ def _clean_html(html: str) -> str:
     html = re.sub(r'<button[^>]*>.*?</button>', '', html, flags=re.DOTALL | re.IGNORECASE)
     html = re.sub(r'<img[^>]*>', '', html, flags=re.IGNORECASE)
 
+    # Remove video embeds (deferred-media, iframes, templates)
+    # These are handled separately in the media array for GraphQL compatibility
+    html = re.sub(r'<deferred-media[^>]*>.*?</deferred-media>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<template[^>]*>.*?</template>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<iframe[^>]*>.*?</iframe>', '', html, flags=re.DOTALL | re.IGNORECASE)
+
     # Remove divs and spans but keep their content
     html = re.sub(r'</?div[^>]*>', '', html, flags=re.IGNORECASE)
     html = re.sub(r'</?span[^>]*>', '', html, flags=re.IGNORECASE)
@@ -64,19 +70,70 @@ def _clean_html(html: str) -> str:
     return html.strip()
 
 
+def _format_body_html(html: str) -> str:
+    """
+    Format body_html with proper paragraph tags.
+
+    Converts <br> tags into separate paragraphs and ensures all text is wrapped in <p> tags.
+    """
+    if not html:
+        return ""
+
+    # First clean the HTML
+    html = _clean_html(html)
+
+    if not html:
+        return ""
+
+    # Check if content already has paragraph tags
+    has_p_tags = bool(re.search(r'<p[^>]*>', html, re.IGNORECASE))
+
+    if has_p_tags:
+        # Already has paragraphs, just convert any remaining <br> to paragraph breaks
+        # Split on <br> tags and wrap each segment in <p> if not already wrapped
+        parts = re.split(r'<br\s*/?>', html, flags=re.IGNORECASE)
+        formatted_parts = []
+
+        for part in parts:
+            part = part.strip()
+            if part:
+                # If this part doesn't start with a tag, wrap it
+                if not part.startswith('<'):
+                    formatted_parts.append(f'<p>{part}</p>')
+                else:
+                    formatted_parts.append(part)
+
+        return ''.join(formatted_parts)
+    else:
+        # No paragraph tags, split on <br> and wrap each in <p>
+        parts = re.split(r'<br\s*/?>', html, flags=re.IGNORECASE)
+        formatted_parts = []
+
+        for part in parts:
+            part = part.strip()
+            if part:
+                formatted_parts.append(f'<p>{part}</p>')
+
+        return ''.join(formatted_parts) if formatted_parts else f'<p>{html}</p>'
+
+
 def _generate_alt_tags(product_name: str, variant_options: Dict[str, str]) -> str:
     """
     Generate alt text with filter tags for images.
 
     Format: "Product Name #OPTION1#OPTION2#OPTION3"
+    Skips common unit values like "EA", "Each", None, etc.
     """
     tags = []
+
+    # Common values to skip (not meaningful differentiators)
+    skip_values = {'ea', 'each', 'none', '', 'null'}
 
     # Add option tags (uppercase, replace spaces/hyphens with underscores)
     for key in ['size', 'material', 'option1', 'option2', 'option3']:
         value = variant_options.get(key, '')
-        if value:
-            tag = value.upper().replace(' ', '_').replace('-', '_').replace('&', '_')
+        if value and str(value).lower() not in skip_values:
+            tag = str(value).upper().replace(' ', '_').replace('-', '_').replace('&', '_')
             tags.append(f"#{tag}")
 
     tag_string = ''.join(tags)
@@ -106,7 +163,7 @@ def generate_shopify_product(
     # Extract basic info
     title = parsed_data.get('title', input_data.get('description_1', 'Unknown Product'))
     brand = parsed_data.get('brand_hint', 'Purina')
-    description = _clean_html(parsed_data.get('description', ''))
+    description = _format_body_html(parsed_data.get('description', ''))
 
     log(f"    - Title: {title}")
     log(f"    - Brand: {brand}")
@@ -137,6 +194,10 @@ def generate_shopify_product(
     # Build Shopify variants
     shopify_variants = []
 
+    # Get variant-image mapping data if available
+    images_data = parsed_data.get('images_data', {})
+    variant_image_map = images_data.get('variant_image_map', {})
+
     for variant_position, variant_record in enumerate(all_variant_records, 1):
         # Get option values from the fields specified in option_1-4
         option1_value = variant_record.get(option_1_field, '') if option_1_field else ''
@@ -158,7 +219,42 @@ def generate_shopify_product(
         sku = variant_record.get('item_#', f"PUR-{variant_position:04d}")
         barcode = variant_record.get('sku', variant_record.get('upc', variant_record.get('upc_updated', '')))
 
-        # Build variant
+        # Determine correct image_id for this variant
+        image_id = variant_position  # Default: use variant position
+
+        if variant_image_map:
+            # Build variant key from options (matching parser format)
+            # Try multiple key patterns since shop site may have different option structure
+            # than our input file (e.g., shop has "EA" as option2, input file might not)
+
+            possible_keys = [
+                f"{option1_value}|{option2_value}|{option3_value}".strip('|'),
+                f"{option1_value}||".strip('|'),  # Just option1
+                f"{option1_value}",  # Just option1 without pipes
+            ]
+
+            # Also try with "EA" as option2 (common in shop site)
+            if option1_value and not option2_value:
+                possible_keys.append(f"{option1_value}|EA|None")
+                possible_keys.append(f"{option1_value}|EA|")
+                possible_keys.append(f"{option1_value}|EA")
+
+            # Look up image position for this variant (case-insensitive matching)
+            variant_img_info = None
+
+            # Create lowercase map for case-insensitive lookup
+            variant_image_map_lower = {k.lower(): v for k, v in variant_image_map.items()}
+
+            for key in possible_keys:
+                key_lower = key.lower()
+                if key_lower in variant_image_map_lower:
+                    variant_img_info = variant_image_map_lower[key_lower]
+                    break
+
+            if variant_img_info:
+                image_id = variant_img_info.get('position', variant_position)
+
+        # Build variant (only include option fields that are actually used)
         variant = {
             "sku": str(sku),
             "price": price,
@@ -167,10 +263,6 @@ def generate_shopify_product(
             "compare_at_price": None,
             "fulfillment_service": "manual",
             "inventory_management": "shopify",
-            "option1": option1_value or None,
-            "option2": option2_value or None,
-            "option3": option3_value or None,
-            "option4": option4_value or None,
             "taxable": True,
             "barcode": barcode,
             "grams": 0,
@@ -179,8 +271,18 @@ def generate_shopify_product(
             "inventory_quantity": int(variant_record.get('inventory_qty', 0)),
             "requires_shipping": True,
             "metafields": [],
-            "image_id": variant_position
+            "image_id": image_id
         }
+
+        # Only add option fields if they have values
+        if option1_value:
+            variant["option1"] = option1_value
+        if option2_value:
+            variant["option2"] = option2_value
+        if option3_value:
+            variant["option3"] = option3_value
+        if option4_value:
+            variant["option4"] = option4_value
 
         # Add cost if available (for Shopify's inventoryItem.cost field)
         if cost:
@@ -264,21 +366,74 @@ def generate_shopify_product(
                 "values": values
             })
 
-    # Build images array
+    # Build images array with variant-specific alt tags
     images = []
-    gallery_images = parsed_data.get('gallery_images', [])
+    images_data = parsed_data.get('images_data', {})
 
-    if gallery_images:
-        log(f"    - Adding {len(gallery_images)} image(s)")
-        for idx, img_url in enumerate(gallery_images, 1):
-            # Generate alt text with filter tags
-            alt_text = _generate_alt_tags(title, shopify_variants[0] if shopify_variants else {})
+    if images_data and images_data.get('images'):
+        # Use variant-image mapping data from parser
+        variant_image_map = images_data.get('variant_image_map', {})
 
-            images.append({
-                "position": idx,
-                "src": img_url,
-                "alt": alt_text
-            })
+        log(f"    - Adding {len(images_data['images'])} image(s) with variant mapping")
+
+        for img_data in images_data['images']:
+            media_type = img_data.get('media_type', 'image')
+
+            # Skip videos - they go in the media array, not images array
+            if media_type in ['external_video', 'video']:
+                continue
+
+            position = img_data.get('position', 0)
+            src = img_data.get('src', '')
+            variant_keys = img_data.get('variant_keys', [])
+
+            # Determine which variants use this image
+            if variant_keys:
+                # Variant-specific image - create one entry with variant filter tags
+                first_variant_key = variant_keys[0]
+                variant_info = variant_image_map.get(first_variant_key, {})
+                variant_options = variant_info.get('options', {})
+
+                # Generate alt text with filter tags
+                alt_text = _generate_alt_tags(title, variant_options)
+
+                images.append({
+                    "position": position,
+                    "src": src,
+                    "alt": alt_text
+                })
+            else:
+                # Shared image - create one entry for EACH variant with that variant's tags
+                for variant in shopify_variants:
+                    variant_options = {
+                        'option1': variant.get('option1', ''),
+                        'option2': variant.get('option2', ''),
+                        'option3': variant.get('option3', ''),
+                    }
+
+                    # Generate alt text with this variant's filter tags
+                    alt_text = _generate_alt_tags(title, variant_options)
+
+                    images.append({
+                        "position": position,
+                        "src": src,
+                        "alt": alt_text
+                    })
+    else:
+        # Fallback: use legacy gallery_images field
+        gallery_images = parsed_data.get('gallery_images', [])
+
+        if gallery_images:
+            log(f"    - Adding {len(gallery_images)} image(s) (legacy mode)")
+            for idx, img_url in enumerate(gallery_images, 1):
+                # Generate alt text with filter tags
+                alt_text = _generate_alt_tags(title, shopify_variants[0] if shopify_variants else {})
+
+                images.append({
+                    "position": idx,
+                    "src": img_url,
+                    "alt": alt_text
+                })
 
     # Build metafields (product-level)
     metafields = []
@@ -328,13 +483,91 @@ def generate_shopify_product(
         })
         log(f"    - Added Documentation metafield with {len(documents)} document(s)")
 
-    # Build final Shopify product structure
+    # Separate videos from images (videos require GraphQL, can't be imported via JSON)
+    video_media = []
+    if images_data and images_data.get('images'):
+        for img_data in images_data['images']:
+            media_type = img_data.get('media_type', 'image')
+            if media_type in ['external_video', 'video']:
+                # Extract video data for GraphQL upload
+                position = img_data.get('position', 0)
+                variant_keys = img_data.get('variant_keys', [])
+
+                video_entry = {
+                    'position': position,
+                    'media_type': media_type,
+                    'alt': img_data.get('alt', ''),
+                }
+
+                if media_type == 'external_video':
+                    video_entry['host'] = img_data.get('host', '')
+                    video_entry['external_id'] = img_data.get('external_id', '')
+                    video_entry['src'] = img_data.get('src', '')
+                elif media_type == 'video':
+                    video_entry['sources'] = img_data.get('sources', [])
+
+                # Add variant associations (for shared videos, duplicate per variant)
+                if variant_keys:
+                    # Video is variant-specific
+                    video_entry['variant_options'] = []
+                    for variant_key in variant_keys:
+                        variant_info = variant_image_map.get(variant_key, {})
+                        if variant_info:
+                            video_entry['variant_options'].append(variant_info.get('options', {}))
+                else:
+                    # Shared video - associate with all variants
+                    video_entry['variant_options'] = [
+                        {
+                            'option1': v.get('option1', ''),
+                            'option2': v.get('option2', ''),
+                            'option3': v.get('option3', ''),
+                        }
+                        for v in shopify_variants
+                    ]
+
+                video_media.append(video_entry)
+
+    # Build media array for GraphQL (videos go here, not in images array)
+    # Videos must be uploaded using productCreateMedia mutation after product creation
+    media = []
+    if video_media:
+        for video in video_media:
+            media_type = video.get('media_type')
+
+            if media_type == 'external_video':
+                # External video (YouTube, Vimeo, etc.)
+                media_entry = {
+                    "alt": video.get('alt', ''),
+                    "media_content_type": "EXTERNAL_VIDEO",
+                    "original_source": video.get('src', ''),
+                    "host": video.get('host', '').upper(),  # YOUTUBE, VIMEO
+                    "external_id": video.get('external_id', '')
+                }
+            elif media_type == 'video':
+                # Hosted video
+                sources = video.get('sources', [])
+                if sources:
+                    media_entry = {
+                        "alt": video.get('alt', ''),
+                        "media_content_type": "VIDEO",
+                        "original_source": sources[0].get('url', '')
+                    }
+
+            # Add variant associations if present
+            if 'variant_options' in video:
+                media_entry['variant_options'] = video['variant_options']
+
+            media.append(media_entry)
+
+        log(f"    - Added {len(media)} video(s) to media array for GraphQL upload")
+
+    # Build final Shopify product structure (GraphQL API 2025-10 compatible format)
     shopify_product = {
         "product": {
             "title": title,
-            "body_html": description,
+            "descriptionHtml": description,  # GraphQL uses descriptionHtml instead of body_html
             "vendor": brand,
-            "published": True,
+            "status": "ACTIVE",  # GraphQL uses status (ACTIVE/DRAFT/ARCHIVED) instead of published boolean
             "options": options,
             "variants": shopify_variants,
             "images": images,
@@ -342,13 +575,11 @@ def generate_shopify_product(
         }
     }
 
-    # Add source site info for reference
-    shopify_product["_metadata"] = {
-        "source_site": parsed_data.get('site_source', 'unknown'),
-        "source_upc": input_data.get('upc', input_data.get('upc_updated', '')),
-        "source_item_number": input_data.get('item_#', ''),
-        "parsed_at": "2025-11-04"  # Could use datetime.now()
-    }
+    # Add media array if we have videos
+    # NOTE: Videos require GraphQL API and must be uploaded using productCreateMedia mutation
+    # after product creation, then associated with variants using productVariantAppendMedia
+    if media:
+        shopify_product['product']['media'] = media
 
     return shopify_product
 
