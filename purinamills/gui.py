@@ -724,7 +724,7 @@ def build_gui():
                             if upcitemdb_status == "Lookup failed":
                                 error_msg = "Product not found and UPCItemDB lookup failed"
                                 status(f"  ⚠ Skipping: UPCItemDB lookup also failed")
-                                enriched.append({"input": product, "product": None, "error": error_msg})
+                                # Don't add to enriched - only add to failed_records
                                 failed_records.append({
                                     **product,  # Include all original fields
                                     'error_reason': error_msg
@@ -765,7 +765,7 @@ def build_gui():
                                 if not image_urls:
                                     error_msg = "No UPCItemDB images available"
                                     status(f"  ⚠ {error_msg}")
-                                    enriched.append({"input": product, "product": None, "error": error_msg})
+                                    # Don't add to enriched - only add to failed_records
                                     failed_records.append({
                                         **product,
                                         'error_reason': error_msg
@@ -786,7 +786,7 @@ def build_gui():
                                 if not best_image:
                                     error_msg = "No suitable UPCItemDB images (failed quality check)"
                                     status(f"  ⚠ No suitable UPCItemDB images found")
-                                    enriched.append({"input": product, "product": None, "error": error_msg})
+                                    # Don't add to enriched - only add to failed_records
                                     failed_records.append({
                                         **product,
                                         'error_reason': error_msg
@@ -842,7 +842,7 @@ def build_gui():
                             else:
                                 # No fallback available
                                 error_msg = "Product not found"
-                                enriched.append({"input": product, "product": None, "error": error_msg})
+                                # Don't add to enriched - only add to failed_records
                                 failed_records.append({
                                     **product,
                                     'error_reason': error_msg
@@ -921,8 +921,7 @@ def build_gui():
                         error_msg = str(e)
                         status(f"  ❌ Error: {error_msg}")
                         logging.exception(f"Error processing product {upc}:")
-                        # Keep original input with error info
-                        enriched.append({"input": product, "product": None, "error": error_msg})
+                        # Don't add to enriched - only add to failed_records
                         failed_records.append({
                             **product,
                             'error_reason': error_msg

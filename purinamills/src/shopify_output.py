@@ -70,6 +70,59 @@ def _clean_html(html: str) -> str:
     return html.strip()
 
 
+def _normalize_size(size_value: str) -> str:
+    """
+    Normalize size values to use proper capitalization.
+
+    Rules:
+    - Common units stay uppercase: LB, OZ, KG, G, ML, L, GAL
+    - Other words use initial caps: Gallon, Pound, Each, Pack
+    - Numbers stay as-is
+
+    Examples:
+        "50 LB" -> "50 LB"
+        "2 GALLON" -> "2 Gallon"
+        "16 OZ" -> "16 OZ"
+        "EACH" -> "Each"
+    """
+    if not size_value:
+        return ""
+
+    # List of units that should remain uppercase
+    uppercase_units = {
+        'LB', 'LBS', 'OZ', 'KG', 'G', 'MG',
+        'ML', 'L', 'GAL', 'QT', 'PT', 'FL',
+        'CT', 'EA', 'PK', 'BX', 'CS'
+    }
+
+    # Split into words
+    words = size_value.strip().split()
+    normalized_words = []
+
+    for word in words:
+        # Check if it's a number (with or without decimals)
+        if re.match(r'^\d+(\.\d+)?$', word):
+            normalized_words.append(word)
+        # Check if it's an uppercase unit that should stay uppercase
+        elif word.upper() in uppercase_units:
+            normalized_words.append(word.upper())
+        # Check for mixed formats like "50LB" (number + unit together)
+        elif re.match(r'^\d+[A-Z]+$', word, re.IGNORECASE):
+            # Extract number and unit
+            match = re.match(r'^(\d+)([A-Z]+)$', word, re.IGNORECASE)
+            if match:
+                number, unit = match.groups()
+                if unit.upper() in uppercase_units:
+                    normalized_words.append(f"{number} {unit.upper()}")
+                else:
+                    normalized_words.append(f"{number} {unit.capitalize()}")
+        # Otherwise, use initial caps (title case)
+        else:
+            normalized_words.append(word.capitalize())
+
+    return ' '.join(normalized_words)
+
+
 def _format_body_html(html: str) -> str:
     """
     Format body_html with proper paragraph tags.
@@ -181,6 +234,13 @@ def generate_shopify_product(
     option_3_field = input_data.get('option_3', '').strip()
     option_4_field = input_data.get('option_4', '').strip()
 
+    # If no options are defined but product has size, use size as option_1
+    # This ensures size information is prominently displayed even for single-variant products
+    if not option_1_field and not option_2_field and not option_3_field and not option_4_field:
+        if input_data.get('size'):
+            option_1_field = 'size'
+            log(f"    - No explicit options found, using 'size' as option_1")
+
     log(f"    - Generating {len(all_variant_records)} variant(s)")
     if option_1_field:
         log(f"    - Option 1: {option_1_field}")
@@ -204,6 +264,16 @@ def generate_shopify_product(
         option2_value = variant_record.get(option_2_field, '') if option_2_field else ''
         option3_value = variant_record.get(option_3_field, '') if option_3_field else ''
         option4_value = variant_record.get(option_4_field, '') if option_4_field else ''
+
+        # Normalize size values for consistent capitalization
+        if option_1_field == 'size' and option1_value:
+            option1_value = _normalize_size(str(option1_value))
+        if option_2_field == 'size' and option2_value:
+            option2_value = _normalize_size(str(option2_value))
+        if option_3_field == 'size' and option3_value:
+            option3_value = _normalize_size(str(option3_value))
+        if option_4_field == 'size' and option4_value:
+            option4_value = _normalize_size(str(option4_value))
 
         # Get price
         price = str(variant_record.get('sold_ext_price_adj', variant_record.get('avg_price_/_unit', '0')))
