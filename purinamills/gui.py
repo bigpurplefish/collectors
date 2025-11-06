@@ -380,8 +380,10 @@ def build_gui():
             val = start_var.get()
             cfg["START_RECORD"] = "" if val == 0 else str(val)
             save_config(cfg)
-        except Exception:
-            pass
+        except (ValueError, tk.TclError, Exception):
+            # Handle invalid/blank spinbox values gracefully
+            cfg["START_RECORD"] = ""
+            save_config(cfg)
 
     start_var.trace_add("write", on_start_change)
     current_row += 1
@@ -427,8 +429,10 @@ def build_gui():
             val = end_var.get()
             cfg["END_RECORD"] = "" if val == 0 else str(val)
             save_config(cfg)
-        except Exception:
-            pass
+        except (ValueError, tk.TclError, Exception):
+            # Handle invalid/blank spinbox values gracefully
+            cfg["END_RECORD"] = ""
+            save_config(cfg)
 
     end_var.trace_add("write", on_end_change)
     current_row += 1
@@ -541,9 +545,22 @@ def build_gui():
                 output_file = output_var.get()
                 log_file = log_var.get()
                 processing_mode = mode_var.get()
-                start_record_int = start_var.get()  # Already an integer
-                end_record_int = end_var.get()  # Already an integer
-                laplacian_threshold = laplacian_var.get()  # Already an integer
+
+                # Safely get integer values, handling blank/invalid inputs
+                try:
+                    start_record_int = start_var.get()
+                except (ValueError, tk.TclError):
+                    start_record_int = 0
+
+                try:
+                    end_record_int = end_var.get()
+                except (ValueError, tk.TclError):
+                    end_record_int = 0
+
+                try:
+                    laplacian_threshold = laplacian_var.get()
+                except (ValueError, tk.TclError):
+                    laplacian_threshold = 100  # Default value
 
                 # Setup logging
                 log_dir = os.path.dirname(log_file)
