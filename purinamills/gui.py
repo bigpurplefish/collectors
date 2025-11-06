@@ -359,29 +359,30 @@ def build_gui():
     )
     tb.Label(label_frame, text=":", anchor="w").pack(side="left")
 
-    # Convert empty string or None to 0 for integer field
+    # Use StringVar to allow blank values in spinbox
     start_val = cfg.get("START_RECORD", "")
-    start_val = int(start_val) if start_val and str(start_val).strip() else 0
-    start_var = tb.IntVar(value=start_val)
-    tb.Spinbox(
+    start_var = tb.StringVar(value=start_val)
+    start_spinbox = tb.Spinbox(
         container,
         textvariable=start_var,
         from_=0,
         to=999999,
         increment=1,
         width=10
-    ).grid(
-        row=current_row, column=1, sticky="w", padx=5, pady=5
     )
+    start_spinbox.grid(row=current_row, column=1, sticky="w", padx=5, pady=5)
 
     # Auto-save
     def on_start_change(*args):
         try:
-            val = start_var.get()
-            cfg["START_RECORD"] = "" if val == 0 else str(val)
+            val = start_var.get().strip()
+            # Validate it's a number or blank
+            if val:
+                int(val)  # Validate it's a valid integer
+            cfg["START_RECORD"] = val
             save_config(cfg)
         except (ValueError, tk.TclError, Exception):
-            # Handle invalid/blank spinbox values gracefully
+            # Handle invalid spinbox values gracefully
             cfg["START_RECORD"] = ""
             save_config(cfg)
 
@@ -408,29 +409,30 @@ def build_gui():
     )
     tb.Label(label_frame, text=":", anchor="w").pack(side="left")
 
-    # Convert empty string or None to 0 for integer field
+    # Use StringVar to allow blank values in spinbox
     end_val = cfg.get("END_RECORD", "")
-    end_val = int(end_val) if end_val and str(end_val).strip() else 0
-    end_var = tb.IntVar(value=end_val)
-    tb.Spinbox(
+    end_var = tb.StringVar(value=end_val)
+    end_spinbox = tb.Spinbox(
         container,
         textvariable=end_var,
         from_=0,
         to=999999,
         increment=1,
         width=10
-    ).grid(
-        row=current_row, column=1, sticky="w", padx=5, pady=5
     )
+    end_spinbox.grid(row=current_row, column=1, sticky="w", padx=5, pady=5)
 
     # Auto-save
     def on_end_change(*args):
         try:
-            val = end_var.get()
-            cfg["END_RECORD"] = "" if val == 0 else str(val)
+            val = end_var.get().strip()
+            # Validate it's a number or blank
+            if val:
+                int(val)  # Validate it's a valid integer
+            cfg["END_RECORD"] = val
             save_config(cfg)
         except (ValueError, tk.TclError, Exception):
-            # Handle invalid/blank spinbox values gracefully
+            # Handle invalid spinbox values gracefully
             cfg["END_RECORD"] = ""
             save_config(cfg)
 
@@ -548,13 +550,15 @@ def build_gui():
 
                 # Safely get integer values, handling blank/invalid inputs
                 try:
-                    start_record_int = start_var.get()
-                except (ValueError, tk.TclError):
+                    start_val = start_var.get().strip()
+                    start_record_int = int(start_val) if start_val else 0
+                except (ValueError, tk.TclError, AttributeError):
                     start_record_int = 0
 
                 try:
-                    end_record_int = end_var.get()
-                except (ValueError, tk.TclError):
+                    end_val = end_var.get().strip()
+                    end_record_int = int(end_val) if end_val else 0
+                except (ValueError, tk.TclError, AttributeError):
                     end_record_int = 0
 
                 try:
