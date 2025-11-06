@@ -936,8 +936,10 @@ def build_gui():
                     os.makedirs(output_dir, exist_ok=True)
 
                 # Wrap products in "products" array for GraphQL 2025-10 compliance
+                # Each item in enriched is {"product": {...}}, but upscaler expects [{...}, ...]
+                # So we unwrap the "product" key from each item
                 output_data = {
-                    "products": enriched
+                    "products": [item["product"] for item in enriched]
                 }
 
                 with open(output_file, 'w', encoding='utf-8') as f:
