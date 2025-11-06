@@ -935,8 +935,13 @@ def build_gui():
                 if output_dir:
                     os.makedirs(output_dir, exist_ok=True)
 
+                # Wrap products in "products" array for GraphQL 2025-10 compliance
+                output_data = {
+                    "products": enriched
+                }
+
                 with open(output_file, 'w', encoding='utf-8') as f:
-                    json.dump(enriched, f, indent=2, ensure_ascii=False)
+                    json.dump(output_data, f, indent=2, ensure_ascii=False)
 
                 # Save error log if there are failed records
                 if failed_records:
