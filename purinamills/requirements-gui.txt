@@ -1,2 +1,5 @@
-# GUI dependencies (in addition to requirements.txt)
+# Include production dependencies
+-r requirements.txt
+
+# GUI frameworks
 ttkbootstrap>=1.10.1
