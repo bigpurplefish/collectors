@@ -44,10 +44,11 @@ It uses a 3-tier fallback strategy:
 ### Shopify Output
 - **GraphQL-compliant structure** - Ready for Shopify Admin API
 - **HTML cleaning** - Removes scripts, styles, non-content elements
-- **Media array generation** - Includes images and videos
+- **Media array generation** - Includes images and videos (PDFs stored in metafields)
 - **Variant structure** - Properly formatted parent/variant relationships
 - **Alt tag generation** - SEO-friendly image descriptions
 - **Size normalization** - Standardizes weight/volume formats
+- **PDF storage** - Documents stored in custom.documentation metafield as JSON
 
 ### User Interfaces
 - **Thread-safe GUI** with queue-based communication (follows GUI_DESIGN_REQUIREMENTS.md)
@@ -278,6 +279,7 @@ mypy src/
 - `_generate_alt_tags()` - Creates SEO-friendly image descriptions
 - Handles parent/variant relationships
 - Generates media array with images and videos
+- Stores PDFs in custom metafield (not in media array)
 
 ### Data Flow
 
@@ -334,6 +336,7 @@ mypy src/
    - Create GraphQL-compliant product structure
    - Clean HTML content for Shopify
    - Generate media array (images and videos)
+   - Store PDFs in custom.documentation metafield
    - Format variant structure with options
    - Create SEO-friendly alt tags
    - Normalize sizes/weights
