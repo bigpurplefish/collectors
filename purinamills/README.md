@@ -31,6 +31,7 @@ It uses a 3-tier fallback strategy:
 - **Variant/parent product support** - Groups related SKUs
 - **WWW data merging** - Combines shop and www site data when available
 - **Field normalization** - Cleans and standardizes all product data
+- **PDF document extraction** - Captures product PDFs from "Additional Materials" sections
 
 ### Image Processing
 - **Image quality assessment** using Laplacian variance (sharpness detection)
@@ -254,7 +255,9 @@ mypy src/
 - `PurinamillsParser` class with format auto-detection
 - Shop site: Parses JSON-LD structured data + Shopify HTML
 - WWW site: Parses WordPress/custom HTML structure
-- Extracts: title, brand, description, benefits, nutrition, directions, images
+- Extracts: title, brand, description, benefits, nutrition, directions, images, PDFs
+- `_extract_www_documents()` - Finds PDFs in "Additional Materials" accordion
+- Auto-detects document links (getmedia URLs, .pdf extensions)
 - Auto-detects site type from canonical URL or Shopify markers
 - Returns unified data structure with `site_source` indicator
 
@@ -305,6 +308,7 @@ mypy src/
    - Parse HTML for additional fields (both sites)
    - Extract: title, brand, description, benefits, nutrition, directions
    - Collect all image URLs
+   - Extract PDF documents from "Additional Materials" sections (www site)
    - Normalize data structure
 
    **Step 4: Handle Variants (if parent product)**
@@ -322,8 +326,9 @@ mypy src/
 
    **Step 6: Optional WWW Site Enhancement**
    - If shop site data is minimal, fetch www site
-   - Parse www site for additional details
+   - Parse www site for additional details (includes PDFs)
    - Merge www data into shop data (preserves shop data priority)
+   - Extract PDFs from "Additional Materials" accordion sections
 
    **Step 7: Generate Shopify Output**
    - Create GraphQL-compliant product structure
@@ -338,6 +343,47 @@ mypy src/
    - Write JSON to output file with formatting
    - Generate error report for failed products
    - Update configuration with statistics
+
+### PDF Document Extraction
+
+The collector automatically extracts product documentation PDFs from the www.purinamills.com site.
+
+**Source:** WWW site "Additional Materials" accordion sections
+
+**Detection:**
+- Searches for accordion sections with "Additional Materials" title
+- Identifies PDF links by URL patterns:
+  - Contains "getmedia" (CMS document URLs)
+  - Contains ".pdf" extension
+
+**Extraction Process:**
+1. Locate accordion structure: `<ul class="accordion">`
+2. Find "Additional Materials" accordion item
+3. Extract all links from accordion content
+4. Filter for document URLs (getmedia or .pdf)
+5. Deduplicate URLs
+6. Store with title and URL
+
+**Output Format:**
+```json
+"documents": [
+  {
+    "title": "Feeding Guide",
+    "url": "https://www.purinamills.com/getmedia/abc123.pdf",
+    "type": "pdf"
+  }
+]
+```
+
+**Storage in Shopify:**
+- Stored in custom metafield: `custom.documentation`
+- Type: JSON
+- Contains array of document objects
+- Accessible via Shopify Admin API
+
+**Implementation:** `src/parser.py:_extract_www_documents()`
+
+PDFs are only extracted from www site as shop site typically doesn't include technical documentation.
 
 ### SEO-Friendly Alt Tag Generation
 
