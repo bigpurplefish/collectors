@@ -18,12 +18,15 @@ It uses a 3-tier fallback strategy:
 ### Search & Collection
 - **Dual-site support** - Searches shop.purinamills.com first, falls back to www.purinamills.com
 - **3-tier search strategy**:
-  1. Exact match using `description_1` field
-  2. Fuzzy match with keyword extraction and synonyms (equine→horse, bovine→cattle)
-  3. WWW site fallback search
+  1. Exact match using `description_1` field (shop site via HTTP)
+  2. Fuzzy match with keyword extraction and synonyms (shop site)
+  3. WWW site fallback search (requires Playwright)
+- **Playwright for JavaScript rendering** - WWW site requires headless browser (Chromium)
+- **Headless browser automation** - Launches Chromium, waits for network idle
 - **Direct site search** - No index building required
 - **Keyword-based scoring** with stop words filtering
 - **Configurable match threshold** (default: 0.3)
+- **UPCItemDB fallback** - When product not found on manufacturer sites
 
 ### Data Processing
 - **Dual-site HTML parsing** - Auto-detects Shopify vs WordPress format
@@ -35,10 +38,11 @@ It uses a 3-tier fallback strategy:
 
 ### Image Processing (UPCItemDB Fallback Only)
 - **Image quality assessment** - Laplacian variance (sharpness detection) for UPCItemDB images
-- **Placeholder detection** - Perceptual hashing filters generic images
-- **Whitespace cropping** - Removes borders from product images
+- **Placeholder detection** - Perceptual hashing (imagehash library) filters generic images
+- **Whitespace cropping** - OpenCV-based border removal
 - **Best image selection** - Evaluates dimensions, sharpness, and quality
-- **Configurable thresholds** - Laplacian threshold (default: 100) and Hamming distance
+- **Configurable thresholds** - Laplacian threshold (default: 100, configurable in GUI)
+- **Dependencies** - OpenCV, NumPy, Pillow, imagehash for image processing
 - **Only used when product not found on manufacturer sites** - Manufacturer images used as-is
 
 ### Shopify Output
@@ -80,12 +84,38 @@ pyenv local purinamills
 # Install dependencies
 pip install -r requirements.txt
 
+# Install Playwright browsers (required for www site search)
+playwright install chromium
+
 # For GUI support
 pip install -r requirements-gui.txt
 
 # For development
 pip install -r requirements-dev.txt
 ```
+
+### Dependencies
+
+**Core (requirements.txt):**
+- `requests>=2.31.0` - HTTP requests for shop site
+- `beautifulsoup4>=4.12.0` - HTML parsing
+- `lxml>=4.9.0` - Fast XML/HTML parsing
+- `playwright>=1.40.0` - Headless browser for www site (requires JavaScript)
+- `openpyxl>=3.1.0` - Excel file reading
+- `Pillow>=10.0.0` - Image processing
+- `opencv-python>=4.8.0` - Image quality assessment
+- `numpy>=1.24.0` - Numerical operations for image processing
+- `imagehash>=4.3.0` - Perceptual hashing for placeholder detection
+
+**GUI (requirements-gui.txt):**
+- `ttkbootstrap>=1.10.1` - Modern themed Tkinter widgets
+
+**Development (requirements-dev.txt):**
+- `pytest>=7.4.0` - Testing framework
+- `pytest-cov>=4.1.0` - Coverage reporting
+- `black>=23.7.0` - Code formatting
+- `flake8>=6.1.0` - Linting
+- `mypy>=1.5.0` - Type checking
 
 ## Usage
 
@@ -114,9 +144,13 @@ The GUI provides:
 
 ### Command Line
 
+**Note:** The CLI (main.py) is currently incomplete and under development. Use GUI for full functionality.
+
 ```bash
 python main.py --input input/products.xlsx --output output/products.json
 ```
+
+Currently implements basic structure only. For complete functionality, use the GUI.
 
 ### Python API
 
@@ -245,19 +279,23 @@ mypy src/
 
 **search.py** - Product search with 3-tier fallback
 - `PurinamillsSearcher` class handles all search logic
-- Exact match via site search (`/search?q=description_1`)
+- Exact match via site search (`/search?q=description_1`) on shop site
 - Fuzzy match with keyword extraction and scoring
-- WWW site fallback if shop site fails
+- `_fetch_with_playwright()` - Headless Chromium for www site search
+- WWW site requires JavaScript rendering (Playwright)
+- Waits for "networkidle" to ensure page fully loaded
 - Stop words filtering (the, and, or, etc.)
 - Synonym expansion (equine→horse, bovine→cattle, canine→dog)
 - Configurable threshold (0.3 default)
 
 **parser.py** - Dual-site HTML parsing
 - `PurinamillsParser` class with format auto-detection
-- Shop site: Parses JSON-LD structured data + Shopify HTML
-- WWW site: Parses WordPress/custom HTML structure
+- Shop site: Parses JSON-LD structured data + Shopify HTML (uses requests)
+- WWW site: Parses WordPress/custom HTML structure (uses Playwright)
+- `fetch_www_page_with_playwright()` - Headless browser for www pages
 - Extracts: title, brand, description, benefits, nutrition, directions, images, PDFs
 - `_extract_www_documents()` - Finds PDFs in "Additional Materials" accordion
+- `_extract_shop_variant_image_map()` - Maps images to specific variants
 - Auto-detects document links (getmedia URLs, .pdf extensions)
 - Auto-detects site type from canonical URL or Shopify markers
 - Returns unified data structure with `site_source` indicator
@@ -522,6 +560,13 @@ upc              | description_1                      | parent_upc       | upcit
 - Check network connectivity
 - Site may be rate-limiting requests
 - Try increasing `fetch_jitter_max_ms` for longer delays
+- For www site: Playwright may need more time for JavaScript
+
+**"Playwright errors / Browser not found"**
+- Run `playwright install chromium` to install browser
+- Chromium is required for www.purinamills.com (JavaScript rendering)
+- Check that Playwright is installed: `pip install playwright>=1.40.0`
+- Verify browser installation: `playwright install --help`
 
 **"Variant structure incorrect"**
 - Ensure `parent_upc` field is set correctly
@@ -558,8 +603,11 @@ tail -f logs/purinamills.log
 - **Placeholder detection**: Uses perceptual hashing to identify and filter generic UPCItemDB images
 - **Site detection**: Auto-detects Shopify vs WordPress format from canonical URL
 - **WWW fallback**: Automatically searches www.purinamills.com if shop site has no results
+- **Playwright automation**: Headless Chromium browser for JavaScript-heavy www site
+- **Network idle wait**: Waits for page fully loaded before parsing (Playwright feature)
 - **Error resilience**: Failed products are logged and reported but don't stop processing
 - **Thread safety**: GUI uses queue-based communication, never blocks on long operations
+- **CLI limitation**: main.py is incomplete skeleton; use GUI for full functionality
 
 ## License
 
