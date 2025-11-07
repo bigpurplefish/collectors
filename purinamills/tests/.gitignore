@@ -4,11 +4,17 @@
 *.html
 *.jpg
 *.png
+*.pdf
 
 # But keep example/template files
 !*_template.json
 !*_sample.json
+!*_example.*
 
 # Ignore test outputs in output directory
 output/*
 !output/.gitkeep
+
+# Python cache
+__pycache__/
+*.pyc

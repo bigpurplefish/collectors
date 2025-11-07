@@ -11,6 +11,10 @@ dist/
 build/
 
 # Project-specific
+/input/*
+!/input/.gitkeep
+!/input/sample_*.json
+!/input/*_example.*
 /output/*
 !/output/.gitkeep
 config.json
