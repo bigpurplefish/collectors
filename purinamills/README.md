@@ -339,6 +339,36 @@ mypy src/
    - Generate error report for failed products
    - Update configuration with statistics
 
+### SEO-Friendly Alt Tag Generation
+
+The collector generates intelligent alt tags for product images using a hashtag filter system:
+
+**Format:** `"Product Name #OPTION1#OPTION2#OPTION3"`
+
+**Algorithm:**
+1. Starts with product name for SEO keywords
+2. Extracts variant options (size, flavor, material, etc.)
+3. Filters out meaningless values ("EA", "Each", "None")
+4. Converts options to uppercase hashtags with underscores
+5. Combines into SEO-friendly alt text
+
+**Examples:**
+```
+"Premium Horse Feed #50_LB"
+"Premium Dog Food #20_LB#CHICKEN"
+"Dog Bowl #PLASTIC"  (skips "EA" unit)
+```
+
+**Benefits:**
+- **SEO:** Product name + descriptive keywords
+- **Shopify:** Hashtags enable variant image filtering
+- **Accessibility:** Screen readers get meaningful descriptions
+- **Uniqueness:** Each variant image has unique alt text
+
+**Implementation:** `utils/shopify_output.py:_generate_alt_tags()`
+
+For variant-specific images, uses that variant's options. For shared images, generates separate entries for each variant with respective tags.
+
 ### Shared Dependencies
 
 Imports utilities from `../shared/`:
