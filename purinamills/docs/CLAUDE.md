@@ -4,14 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Python Development Standards
 
-### CRITICAL: Always Follow These Requirements
+### ⚠️ CRITICAL: ALWAYS Follow Shared Guidelines ⚠️
+
+**MANDATORY FOR ALL CODE GENERATION AND CHANGES:**
+
+You MUST follow ALL applicable guidelines in `/Users/moosemarketer/Code/shared-docs/python/` whenever you:
+- Generate new code
+- Modify existing code
+- Refactor code
+- Create new files
+- Update project structure
+
+This is a **NON-NEGOTIABLE** requirement that applies to **EVERY** coding task, no exceptions.
+
+### Required Pre-Coding Checklist
 
 **Before generating ANY code**, you MUST:
 
 1. **Check Context7** for up-to-date library documentation (use context7 MCP tool)
-2. **Read the shared-docs requirements**:
-   - @~/Code/shared-docs/python/GUI_DESIGN_REQUIREMENTS.md - GUI patterns and threading
-   - @~/Code/shared-docs/python/PROJECT_STRUCTURE_REQUIREMENTS.md - Project layout standards
+2. **Read ALL applicable shared-docs requirements**:
+   - @~/Code/shared-docs/python/PROJECT_STRUCTURE_REQUIREMENTS.md - Project layout, dual entry points, README maintenance
+   - @~/Code/shared-docs/python/GUI_DESIGN_REQUIREMENTS.md - GUI patterns, threading, StringVar vs IntVar
+   - @~/Code/shared-docs/python/GRAPHQL_OUTPUT_REQUIREMENTS.md - Shopify GraphQL output format
    - @~/Code/shared-docs/python/GIT_WORKFLOW.md - Git commit patterns
    - @~/Code/shared-docs/python/TECHNICAL_DOCS.md - General Python standards
 3. **Read collector-specific shared docs**:
@@ -20,10 +34,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Key Requirements to Remember
 
+- **Dual Entry Points**: ALWAYS provide both main.py (CLI) and gui.py (GUI) entry points
+- **README Maintenance**: MUST update README.md in the SAME commit as ANY code changes
 - **GUI Development**: MUST follow GUI_DESIGN_REQUIREMENTS.md exactly
   - Use `darkly` theme, queue-based threading, tooltips, auto-save config
   - Never update widgets from worker threads - use queues
-- **Project Structure**: main.py at root, code in /src, follow standard Python layout
+  - **StringVar for blank-allowed fields** (NOT IntVar) - blank values more intuitive than "0"
+- **Project Structure**: Dual entry points (main.py + gui.py), code in /src and /utils, follow standard Python layout
+- **GraphQL Output**: Follow GRAPHQL_OUTPUT_REQUIREMENTS.md for Shopify API 2025-10 format
 - **Shared Utilities**: Import from `../shared/src/` for common functions
 - **Git Commits**: Include emoji and Co-Authored-By footer
 
