@@ -33,13 +33,13 @@ It uses a 3-tier fallback strategy:
 - **Field normalization** - Cleans and standardizes all product data
 - **PDF document extraction** - Captures product PDFs from "Additional Materials" sections
 
-### Image Processing
-- **Image quality assessment** using Laplacian variance (sharpness detection)
-- **Placeholder detection** - Uses perceptual hashing to filter generic images
+### Image Processing (UPCItemDB Fallback Only)
+- **Image quality assessment** - Laplacian variance (sharpness detection) for UPCItemDB images
+- **Placeholder detection** - Perceptual hashing filters generic images
 - **Whitespace cropping** - Removes borders from product images
 - **Best image selection** - Evaluates dimensions, sharpness, and quality
-- **Image URL normalization** - Converts to HTTPS, strips query params
-- **Retry logic** - Handles transient download failures
+- **Configurable thresholds** - Laplacian threshold (default: 100) and Hamming distance
+- **Only used when product not found on manufacturer sites** - Manufacturer images used as-is
 
 ### Shopify Output
 - **GraphQL-compliant structure** - Ready for Shopify Admin API
@@ -262,13 +262,14 @@ mypy src/
 - Auto-detects site type from canonical URL or Shopify markers
 - Returns unified data structure with `site_source` indicator
 
-**image_quality.py** - Image quality assessment
+**image_quality.py** - Image quality assessment (UPCItemDB fallback only)
 - `calculate_laplacian_score()` - Sharpness detection via Laplacian variance
 - `crop_whitespace()` - Removes borders from images
 - `load_placeholder_images()` - Loads known placeholder images
 - `is_placeholder()` - Detects placeholders via perceptual hashing
 - `download_image()` - Downloads with retry logic and validation
 - `select_best_image()` - Evaluates quality, dimensions, sharpness
+- **Only used when product not found** - Manufacturer images accepted without quality checks
 
 **shopify_output.py** - Shopify format generation
 - `generate_shopify_product()` - Creates GraphQL-compliant structure
@@ -319,12 +320,14 @@ mypy src/
    - Extract variant-specific options (size, flavor, etc.)
    - Collect variant images
 
-   **Step 5: Image Quality Assessment**
-   - Download all candidate images
+   **Step 5: Image Quality Assessment (UPCItemDB Fallback Only)**
+   - **Only if product not found on manufacturer sites**
+   - Download UPCItemDB candidate images
    - Filter out placeholder images (perceptual hashing)
    - Crop whitespace from images
    - Calculate sharpness scores (Laplacian variance)
    - Select best image based on dimensions and quality
+   - **Manufacturer images used as-is without quality checks**
 
    **Step 6: Optional WWW Site Enhancement**
    - If shop site data is minimal, fetch www site
@@ -507,9 +510,11 @@ upc              | description_1                      | parent_upc       | upcit
 - Check site is accessible (not blocking requests)
 
 **"Image quality too low"**
+- **Only applies to UPCItemDB fallback images** (not manufacturer images)
+- Manufacturer images are used as-is without quality checks
+- Laplacian threshold is 100 (configurable in GUI)
 - Placeholder images are filtered by default
-- Laplacian threshold is 100 (configurable)
-- Low-resolution images may be rejected
+- Low-resolution UPCItemDB images may be rejected
 - Check `placeholder_images/` directory for known placeholders
 
 **"Timeout errors"**
@@ -549,7 +554,8 @@ tail -f logs/purinamills.log
 - **Fuzzy matching**: Uses keyword extraction with synonyms (equine→horse, bovine→cattle, canine→dog)
 - **Rate limiting**: Prevents overwhelming servers with 200-700ms jitter between requests
 - **Image normalization**: All images converted to HTTPS with query params stripped
-- **Placeholder detection**: Uses perceptual hashing to identify and filter generic images
+- **Image quality assessment**: Only for UPCItemDB fallback images; manufacturer images used as-is
+- **Placeholder detection**: Uses perceptual hashing to identify and filter generic UPCItemDB images
 - **Site detection**: Auto-detects Shopify vs WordPress format from canonical URL
 - **WWW fallback**: Automatically searches www.purinamills.com if shop site has no results
 - **Error resilience**: Failed products are logged and reported but don't stop processing
