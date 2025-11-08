@@ -1,0 +1,5 @@
+# Exclude all test outputs
+output/
+
+# But keep the directory structure
+!output/.gitkeep
