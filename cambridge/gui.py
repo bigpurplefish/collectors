@@ -21,7 +21,7 @@ import queue
 # Add current directory to path for imports
 sys.path.insert(0, os.path.dirname(__file__))
 
-from src.config import load_config, save_config, INDEX_CACHE_FILE
+from src.config import load_config, save_config, INDEX_CACHE_FILE, PORTAL_INDEX_CACHE_FILE
 from src.processor import process_products
 from src.index_builder import load_index_from_cache, is_index_stale
 from src.settings_dialog import open_settings_dialog
@@ -413,65 +413,106 @@ def build_gui():
     end_var.trace_add("write", on_end_change)
     current_row += 1
 
-    # ========== Product Index Section ==========
+    # ========== Product Indexes Section ==========
     section_label = tb.Label(
         container,
-        text="Product Index",
+        text="Product Indexes",
         font=("Arial", 12, "bold"),
         foreground="#5BC0DE"
     )
     section_label.grid(row=current_row, column=0, columnspan=3, sticky="w", pady=(20, 5))
     current_row += 1
 
-    # Index Status Label
-    index_status_label = tb.Label(
+    # Public Site Index Status Label
+    public_index_status_label = tb.Label(
         container,
-        text="Checking index status...",
+        text="Checking public site index status...",
         font=("Arial", 10),
         foreground="#888"
     )
-    index_status_label.grid(row=current_row, column=0, columnspan=3, sticky="w", padx=5, pady=5)
+    public_index_status_label.grid(row=current_row, column=0, columnspan=3, sticky="w", padx=5, pady=2)
+    current_row += 1
+
+    # Portal Index Status Label
+    portal_index_status_label = tb.Label(
+        container,
+        text="Checking portal index status...",
+        font=("Arial", 10),
+        foreground="#888"
+    )
+    portal_index_status_label.grid(row=current_row, column=0, columnspan=3, sticky="w", padx=5, pady=2)
+    current_row += 1
 
     def update_index_status():
-        """Update the index status label."""
+        """Update both index status labels."""
+        max_age_days = cfg.get("index_max_age_days", 7)
+
+        # Public Site Index
         try:
             cached_index = load_index_from_cache(INDEX_CACHE_FILE, lambda x: None)
             if cached_index:
                 last_updated = cached_index.get("last_updated", "Unknown")
                 total_products = cached_index.get("total_products", 0)
-                max_age_days = cfg.get("index_max_age_days", 7)
                 is_stale = is_index_stale(cached_index, max_age_days)
 
                 if is_stale:
-                    index_status_label.config(
-                        text=f"⚠ Index is stale ({total_products} products, last updated: {last_updated})",
+                    public_index_status_label.config(
+                        text=f"⚠ Public Site Index: STALE ({total_products} products, last updated: {last_updated})",
                         foreground="#FFA500"
                     )
                 else:
-                    index_status_label.config(
-                        text=f"✓ Index is fresh ({total_products} products, last updated: {last_updated})",
+                    public_index_status_label.config(
+                        text=f"✓ Public Site Index: Fresh ({total_products} products, last updated: {last_updated})",
                         foreground="#5BC0DE"
                     )
             else:
-                index_status_label.config(
-                    text="No cached index found - will build on first run",
+                public_index_status_label.config(
+                    text="Public Site Index: Not cached - will build on first run",
                     foreground="#888"
                 )
         except Exception:
-            index_status_label.config(
-                text="Unable to check index status",
+            public_index_status_label.config(
+                text="Public Site Index: Unable to check status",
+                foreground="#888"
+            )
+
+        # Portal Index
+        try:
+            cached_portal_index = load_index_from_cache(PORTAL_INDEX_CACHE_FILE, lambda x: None)
+            if cached_portal_index:
+                last_updated = cached_portal_index.get("last_updated", "Unknown")
+                total_products = cached_portal_index.get("total_products", 0)
+                is_stale = is_index_stale(cached_portal_index, max_age_days)
+
+                if is_stale:
+                    portal_index_status_label.config(
+                        text=f"⚠ Portal Index: STALE ({total_products} products, last updated: {last_updated})",
+                        foreground="#FFA500"
+                    )
+                else:
+                    portal_index_status_label.config(
+                        text=f"✓ Portal Index: Fresh ({total_products} products, last updated: {last_updated})",
+                        foreground="#5BC0DE"
+                    )
+            else:
+                portal_index_status_label.config(
+                    text="Portal Index: Not cached - will build on first run",
+                    foreground="#888"
+                )
+        except Exception:
+            portal_index_status_label.config(
+                text="Portal Index: Unable to check status",
                 foreground="#888"
             )
 
     update_index_status()
-    current_row += 1
 
     # Rebuild Index Checkbox
     rebuild_index_var = tb.BooleanVar(value=cfg.get("rebuild_index", False))
 
     rebuild_checkbox = tb.Checkbutton(
         container,
-        text="Force Rebuild Product Index",
+        text="Force Rebuild Both Product Indexes",
         variable=rebuild_index_var,
         bootstyle="primary-round-toggle"
     )

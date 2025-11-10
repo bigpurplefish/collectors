@@ -145,8 +145,11 @@ python3 gui.py
 3. Select output JSON file location
 4. Choose processing mode (Skip/Overwrite)
 5. Optional: Set record range (start/end)
-6. Optional: Force rebuild product index
-7. Click "Start Processing"
+6. Review **Product Indexes** status (shows both indexes):
+   - **Public Site Index**: Products from www.cambridgepavers.com (60 products)
+   - **Portal Index**: Products from shop.cambridgepavers.com (362 products)
+7. Optional: Check "Force Rebuild Both Product Indexes" to rebuild
+8. Click "Start Processing"
 
 ### CLI Mode
 
