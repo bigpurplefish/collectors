@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Project-specific
+/input/*
+!/input/.gitkeep
+!/input/sample_*.xlsx
+!/input/sample_*.json
+/output/*
+!/output/.gitkeep
+/cache/*
+!/cache/.gitkeep
+config.json
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+/tests/output/*
+!/tests/output/.gitkeep
