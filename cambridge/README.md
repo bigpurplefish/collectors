@@ -270,20 +270,25 @@ Configuration is stored in `config.json` (auto-generated on first run).
 
 ---
 
-## Product Index
+## Product Indexes
 
-The collector builds a searchable product index by crawling the Cambridge public website. This index is cached in `cache/product_index.json`.
+The collector builds TWO searchable product indexes:
+
+1. **Public Site Index** (`cache/product_index.json`) - Crawls www.cambridgepavers.com
+2. **Portal Index** (`cache/portal_product_index.json`) - Crawls shop.cambridgepavers.com
+
+Both indexes are cached and auto-refresh when stale.
 
 ### Index Management
 
-**Auto-refresh:** Index automatically rebuilds if older than `index_max_age_days` (default: 7 days)
+**Auto-refresh:** Indexes automatically rebuild if older than `index_max_age_days` (default: 7 days)
 
 **Manual rebuild:**
 - GUI: Check "Force Rebuild Product Index"
 - CLI: Set `"rebuild_index": true` in config.json
 - Script: Run `python3 scripts/build_index.py`
 
-**Index Structure:**
+**Public Index Structure:**
 ```json
 {
   "last_updated": "2025-11-10T12:00:00",
@@ -298,6 +303,23 @@ The collector builds a searchable product index by crawling the Cambridge public
   ]
 }
 ```
+
+**Portal Index Structure:**
+```json
+{
+  "last_updated": "2025-11-10T12:00:00",
+  "total_products": 120,
+  "products": [
+    {
+      "title": "Sherwood Ledgestone 3-Pc. Design Kit",
+      "url": "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit",
+      "category": "/pavers/sherwood"
+    }
+  ]
+}
+```
+
+**Note:** Portal uses SEO-friendly URLs (e.g., `/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit`), unlike the public site which uses `prodid` parameters.
 
 ---
 

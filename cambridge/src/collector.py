@@ -30,7 +30,9 @@ from src.index_builder import (
 from src.search import CambridgeSearcher
 from src.public_parser import CambridgePublicParser
 from src.portal_parser import CambridgePortalParser
-from src.config import INDEX_CACHE_FILE
+from src.portal_index_builder import CambridgePortalIndexBuilder
+from src.portal_search import CambridgePortalSearcher
+from src.config import INDEX_CACHE_FILE, PORTAL_INDEX_CACHE_FILE
 
 
 # Site Configuration
@@ -61,6 +63,8 @@ class CambridgeCollector:
         self.index_builder = CambridgeIndexBuilder(self.config)
         self.searcher = CambridgeSearcher(self.config)
         self.public_parser = CambridgePublicParser(self.config)
+        self.portal_index_builder = CambridgePortalIndexBuilder(self.config)
+        self.portal_searcher = CambridgePortalSearcher(self.config)
 
         # HTTP session with retries
         self.session = self._create_http_session()
@@ -140,6 +144,51 @@ class CambridgeCollector:
             log(f"❌ Failed to build product index: {e}")
             return False
 
+    def ensure_portal_index_loaded(self, force_rebuild: bool = False, log: Callable = print) -> bool:
+        """
+        Ensure portal product index is loaded and fresh.
+
+        Args:
+            force_rebuild: Force rebuild even if cache is fresh
+            log: Logging function
+
+        Returns:
+            True if index loaded successfully
+        """
+        # Try to load from cache
+        if not force_rebuild:
+            cached_index = load_index_from_cache(PORTAL_INDEX_CACHE_FILE, log)
+
+            if cached_index:
+                # Check if stale
+                max_age_days = self.config.get("index_max_age_days", 7)
+                if is_index_stale(cached_index, max_age_days):
+                    log(f"⚠ Portal index is stale (>{max_age_days} days old)")
+                    log("Rebuilding portal index...")
+                else:
+                    # Use cached index
+                    self.portal_searcher.load_index(cached_index, log)
+                    return True
+
+        # Build new portal index
+        log("")
+        log("Building portal product index (this may take several minutes)...")
+
+        try:
+            index = self.portal_index_builder.build_index(log)
+
+            # Save to cache
+            save_index_to_cache(index, PORTAL_INDEX_CACHE_FILE, log)
+
+            # Load into searcher
+            self.portal_searcher.load_index(index, log)
+
+            return True
+
+        except Exception as e:
+            log(f"❌ Failed to build portal index: {e}")
+            return False
+
     def find_product_url(
         self,
         title: str,
@@ -192,20 +241,34 @@ class CambridgeCollector:
 
     def collect_portal_data(
         self,
-        product_url: str,
+        title: str,
+        color: str,
         log: Callable = print
     ) -> Dict[str, Any]:
         """
         Collect data from dealer portal.
 
         Args:
-            product_url: Product URL (will be adapted for portal if needed)
+            title: Product title to search for
+            color: Color variant (portal URLs don't include color)
             log: Logging function
 
         Returns:
             Dictionary with portal data
         """
         try:
+            # Search portal index for product URL
+            product = self.portal_searcher.find_product_by_title_and_color(title, color, log)
+
+            if not product:
+                log("  ❌ Product not found in portal index")
+                return {}
+
+            product_url = product.get("url", "")
+            if not product_url:
+                log("  ❌ No URL found for product")
+                return {}
+
             # Initialize portal parser with credentials
             portal_config = self.config.copy()
             portal_parser = CambridgePortalParser(portal_config)
@@ -217,8 +280,6 @@ class CambridgeCollector:
                     return {}
 
                 # Fetch and parse product page
-                # Note: Portal URL structure may differ from public site
-                # You may need to map public prodid to portal URL
                 html = portal_parser.fetch_product_page(product_url, log)
 
                 if not html:

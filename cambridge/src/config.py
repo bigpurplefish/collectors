@@ -15,6 +15,7 @@ APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 CACHE_DIR = os.path.join(APP_DIR, "cache")
 INDEX_CACHE_FILE = os.path.join(CACHE_DIR, "product_index.json")
+PORTAL_INDEX_CACHE_FILE = os.path.join(CACHE_DIR, "portal_product_index.json")
 
 
 # Default configuration

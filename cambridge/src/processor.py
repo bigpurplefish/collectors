@@ -114,10 +114,16 @@ def process_products(config: Dict[str, Any], status: Callable = print):
     generator = CambridgeProductGenerator(config)
 
     try:
-        # Ensure product index is loaded
+        # Ensure product index is loaded (public site)
         status("")
         if not collector.ensure_index_loaded(force_rebuild=force_rebuild_index, log=status):
             status("❌ Failed to load product index")
+            return
+
+        # Ensure portal product index is loaded
+        status("")
+        if not collector.ensure_portal_index_loaded(force_rebuild=force_rebuild_index, log=status):
+            status("❌ Failed to load portal product index")
             return
 
         # Load input file
@@ -216,9 +222,8 @@ def process_products(config: Dict[str, Any], status: Callable = print):
 
                     status(f"  Collecting portal data for color: {color}")
 
-                    # TODO: Map color to portal product URL
-                    # For now, use the same URL (portal may have different structure)
-                    portal_data = collector.collect_portal_data(product_url, status)
+                    # Search portal for product using title and color
+                    portal_data = collector.collect_portal_data(title, color, status)
 
                     if portal_data:
                         portal_data_by_color[color] = portal_data
