@@ -137,7 +137,10 @@ python3 gui.py
 ```
 
 **Configuration:**
-1. Enter dealer portal credentials (username/password)
+1. Click "⚙️ Settings" button (or Settings menu → Portal Credentials)
+   - Enter dealer portal username
+   - Enter dealer portal password
+   - Click "Save"
 2. Select input Excel file
 3. Select output JSON file location
 4. Choose processing mode (Skip/Overwrite)

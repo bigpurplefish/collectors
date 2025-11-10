@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-from ttkbootstrap.tooltip import ToolTip
+from ttkbootstrap.widgets import ToolTip
 import threading
 import queue
 
@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from src.config import load_config, save_config, INDEX_CACHE_FILE
 from src.processor import process_products
 from src.index_builder import load_index_from_cache, is_index_stale
+from src.settings_dialog import open_settings_dialog
 
 
 def build_gui():
@@ -40,9 +41,28 @@ def build_gui():
     status_queue = queue.Queue()
     button_control_queue = queue.Queue()
 
+    # Menu Bar
+    menu_bar = tb.Menu(app)
+    app.config(menu=menu_bar)
+
+    settings_menu = tb.Menu(menu_bar, tearoff=0)
+    menu_bar.add_cascade(label="Settings", menu=settings_menu)
+    settings_menu.add_command(
+        label="Portal Credentials",
+        command=lambda: open_settings_dialog(cfg, app)
+    )
+
     # Toolbar
     toolbar = tb.Frame(app)
     toolbar.pack(side="top", fill="x", padx=5, pady=5)
+
+    settings_btn = tb.Button(
+        toolbar,
+        text="⚙️ Settings",
+        command=lambda: open_settings_dialog(cfg, app),
+        bootstyle="secondary-outline"
+    )
+    settings_btn.pack(side="left", padx=5)
 
     # Main container
     container = tb.Frame(app, padding=20)
@@ -67,86 +87,6 @@ def build_gui():
 
     # Row counter
     current_row = 2
-
-    # ========== Dealer Portal Credentials Section ==========
-    section_label = tb.Label(
-        container,
-        text="Dealer Portal Credentials",
-        font=("Arial", 12, "bold"),
-        foreground="#5BC0DE"
-    )
-    section_label.grid(row=current_row, column=0, columnspan=3, sticky="w", pady=(10, 5))
-    current_row += 1
-
-    # Portal Username
-    label_frame = tb.Frame(container)
-    label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
-
-    tb.Label(label_frame, text="Portal Username", anchor="w").pack(side="left")
-    help_icon = tb.Label(
-        label_frame,
-        text=" ⓘ ",
-        font=("Arial", 9),
-        foreground="#5BC0DE",
-        cursor="hand2"
-    )
-    help_icon.pack(side="left")
-    ToolTip(
-        help_icon,
-        text="Enter your Cambridge dealer portal username.\n\nThis is required to access product data from shop.cambridgepavers.com.\n\nExample: markjr@garoppos.com",
-        bootstyle="info"
-    )
-    tb.Label(label_frame, text=":", anchor="w").pack(side="left")
-
-    portal_username_var = tb.StringVar(value=cfg.get("portal_username", ""))
-    tb.Entry(container, textvariable=portal_username_var, width=50).grid(
-        row=current_row, column=1, sticky="ew", padx=5, pady=5
-    )
-
-    def on_portal_username_change(*args):
-        try:
-            cfg["portal_username"] = portal_username_var.get()
-            save_config(cfg)
-        except Exception:
-            pass
-
-    portal_username_var.trace_add("write", on_portal_username_change)
-    current_row += 1
-
-    # Portal Password
-    label_frame = tb.Frame(container)
-    label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
-
-    tb.Label(label_frame, text="Portal Password", anchor="w").pack(side="left")
-    help_icon = tb.Label(
-        label_frame,
-        text=" ⓘ ",
-        font=("Arial", 9),
-        foreground="#5BC0DE",
-        cursor="hand2"
-    )
-    help_icon.pack(side="left")
-    ToolTip(
-        help_icon,
-        text="Enter your Cambridge dealer portal password.\n\nThis is required to access product data from shop.cambridgepavers.com.\n\nNote: Password is stored in config.json (not encrypted).",
-        bootstyle="info"
-    )
-    tb.Label(label_frame, text=":", anchor="w").pack(side="left")
-
-    portal_password_var = tb.StringVar(value=cfg.get("portal_password", ""))
-    tb.Entry(container, textvariable=portal_password_var, show="*", width=50).grid(
-        row=current_row, column=1, sticky="ew", padx=5, pady=5
-    )
-
-    def on_portal_password_change(*args):
-        try:
-            cfg["portal_password"] = portal_password_var.get()
-            save_config(cfg)
-        except Exception:
-            pass
-
-    portal_password_var.trace_add("write", on_portal_password_change)
-    current_row += 1
 
     # ========== File Paths Section ==========
     section_label = tb.Label(
@@ -575,12 +515,18 @@ def build_gui():
                 messagebox.showerror("Validation Error", "Output File is required.")
                 return False
 
-            if not portal_username_var.get().strip():
-                messagebox.showerror("Validation Error", "Portal Username is required.")
+            if not cfg.get("portal_username", "").strip():
+                messagebox.showerror(
+                    "Validation Error",
+                    "Portal Username is required.\n\nPlease configure credentials in Settings (⚙️ button or Settings menu)."
+                )
                 return False
 
-            if not portal_password_var.get().strip():
-                messagebox.showerror("Validation Error", "Portal Password is required.")
+            if not cfg.get("portal_password", "").strip():
+                messagebox.showerror(
+                    "Validation Error",
+                    "Portal Password is required.\n\nPlease configure credentials in Settings (⚙️ button or Settings menu)."
+                )
                 return False
 
             return True

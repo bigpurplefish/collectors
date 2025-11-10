@@ -29,12 +29,14 @@ python3 gui.py
 ```
 
 **In GUI:**
-1. Portal Username: `markjr@garoppos.com`
-2. Portal Password: `Garoppos2025!`
-3. Input File: Browse to `pdf_parser/output/cambridge_products.xlsx`
-4. Output File: `output/cambridge_products.json`
-5. Log File: `logs/cambridge.log`
-6. Click "Start Processing"
+1. Click "⚙️ Settings" button (or Settings menu → Portal Credentials)
+2. Enter Portal Username: `markjr@garoppos.com`
+3. Enter Portal Password: `Garoppos2025!`
+4. Click "Save"
+5. Input File: Browse to `pdf_parser/output/cambridge_products.xlsx`
+6. Output File: `output/cambridge_products.json`
+7. Log File: `logs/cambridge.log`
+8. Click "Start Processing"
 
 **First run will:**
 - Build product index (~2-3 minutes)
