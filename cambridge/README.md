@@ -275,9 +275,11 @@ Configuration is stored in `config.json` (auto-generated on first run).
 The collector builds TWO searchable product indexes:
 
 1. **Public Site Index** (`cache/product_index.json`) - Crawls www.cambridgepavers.com
-2. **Portal Index** (`cache/portal_product_index.json`) - Crawls shop.cambridgepavers.com
+2. **Portal Index** (`cache/portal_product_index.json`) - Uses navigation API from shop.cambridgepavers.com
 
 Both indexes are cached and auto-refresh when stale.
+
+**Note:** The portal index uses the navigation API endpoint instead of crawling, making it faster and more reliable. No authentication is required for index building.
 
 ### Index Management
 
@@ -308,10 +310,10 @@ Both indexes are cached and auto-refresh when stale.
 ```json
 {
   "last_updated": "2025-11-10T12:00:00",
-  "total_products": 120,
+  "total_products": 362,
   "products": [
     {
-      "title": "Sherwood Ledgestone 3-Pc. Design Kit",
+      "title": "Ledgestone 3-Pc. Design Kit",
       "url": "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit",
       "category": "/pavers/sherwood"
     }
@@ -319,7 +321,7 @@ Both indexes are cached and auto-refresh when stale.
 }
 ```
 
-**Note:** Portal uses SEO-friendly URLs (e.g., `/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit`), unlike the public site which uses `prodid` parameters.
+**Note:** Portal uses SEO-friendly URLs (e.g., `/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit`), unlike the public site which uses `prodid` parameters. Product titles from the navigation API may not include collection prefixes (e.g., "Ledgestone 3-Pc. Design Kit" instead of "Sherwood Ledgestone 3-Pc. Design Kit"), but fuzzy matching handles this correctly.
 
 ---
 

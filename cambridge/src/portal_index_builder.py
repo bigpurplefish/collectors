@@ -2,18 +2,15 @@
 Portal Index Builder for Cambridge Dealer Portal
 
 Builds a searchable index of products from the dealer portal (shop.cambridgepavers.com).
-Uses Playwright to navigate JavaScript-rendered pages and extract product URLs.
+Uses the navigation API to fetch complete product hierarchy.
 
 The portal uses SEO-friendly URLs like:
 /pavers/sherwood/sherwood-ledgestone-3-pc-design-kit
 """
 
-import json
-import re
-import time
+import requests
 from datetime import datetime
-from typing import Dict, List, Any, Callable, Optional
-from playwright.sync_api import sync_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
+from typing import Dict, List, Any, Callable
 
 
 class CambridgePortalIndexBuilder:
@@ -24,32 +21,25 @@ class CambridgePortalIndexBuilder:
         Initialize builder.
 
         Args:
-            config: Configuration dictionary with portal_username, portal_password, etc.
+            config: Configuration dictionary
         """
         self.config = config
         self.portal_origin = config.get("portal_origin", "https://shop.cambridgepavers.com")
-        self.username = config.get("portal_username", "")
-        self.password = config.get("portal_password", "")
 
-        # Categories to crawl (based on public site structure)
-        self.categories = [
-            "/pavers",
-            "/pavers/sherwood",
-            "/pavers/roundtable",
-            "/pavers/kingscourt",
-            "/pavers/excalibur",
-            "/pavers/crusader",
-            "/pavers/maytrx",
-            "/walls",
-            "/edging",
-        ]
+        # Navigation API endpoint
+        self.api_url = (
+            f"{self.portal_origin}/api/navigation/v1/categorynavitems/tree"
+            "?c=827395&country=US&currency=USD&exclude_empty=false&language=en"
+            "&max_level=6&menu_fields=internalid,name,sequencenumber,displayinsite"
+            "&n=2&pcv_all_items=undefined&site_id=2&use_pcv=T"
+        )
 
     def build_index(
         self,
         log: Callable = print
     ) -> Dict[str, Any]:
         """
-        Build product index by crawling portal.
+        Build product index using navigation API.
 
         Args:
             log: Logging function
@@ -66,38 +56,24 @@ class CambridgePortalIndexBuilder:
         log("=" * 80)
         log("")
         log(f"Portal: {self.portal_origin}")
-        log(f"Username: {self.username}")
+        log("Fetching product data from navigation API...")
         log("")
 
         products = []
 
         try:
-            # Start Playwright
-            log("Starting browser...")
-            playwright = sync_playwright().start()
-            browser = playwright.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-            )
-            page = context.new_page()
+            # Fetch navigation API
+            response = requests.get(self.api_url, timeout=30)
+            response.raise_for_status()
 
-            # Login
-            if not self._login(page, log):
-                log("❌ Failed to login to portal")
-                browser.close()
-                playwright.stop()
-                return self._create_index(products)
+            data = response.json()
+            log("✓ Successfully fetched navigation API")
 
-            # Crawl each category
-            for category_url in self.categories:
-                log(f"\nCrawling category: {category_url}")
-                category_products = self._crawl_category(page, category_url, log)
-                products.extend(category_products)
-                log(f"  ✓ Found {len(category_products)} products")
-
-            # Close browser
-            browser.close()
-            playwright.stop()
+            # Extract products from hierarchy
+            if "data" in data:
+                products = self._extract_products_recursive(data["data"], log)
+            else:
+                log("⚠ No data field in API response")
 
             log("")
             log("=" * 80)
@@ -110,120 +86,61 @@ class CambridgePortalIndexBuilder:
             log(f"❌ Error building portal index: {e}")
             return self._create_index(products)
 
-    def _login(self, page: Page, log: Callable) -> bool:
-        """
-        Login to dealer portal.
-
-        Args:
-            page: Playwright Page object
-            log: Logging function
-
-        Returns:
-            True if login successful
-        """
-        try:
-            log("Logging in to dealer portal...")
-
-            # Navigate to portal home
-            page.goto(self.portal_origin, wait_until="networkidle", timeout=30000)
-            time.sleep(3)
-
-            # Look for login form
-            email_input = page.locator('input[type="email"], input[name="email"], input#login-email')
-            if email_input.count() > 0:
-                email_input.fill(self.username)
-                log(f"  ✓ Filled username: {self.username}")
-
-            password_input = page.locator('input[type="password"], input[name="password"]')
-            if password_input.count() > 0:
-                password_input.fill(self.password)
-                log("  ✓ Filled password")
-
-            # Click login button
-            login_button = page.locator('button[type="submit"], button:has-text("Log In"), button:has-text("Sign In")')
-            if login_button.count() > 0:
-                login_button.click()
-                log("  ✓ Clicked login button")
-                page.wait_for_load_state("networkidle", timeout=30000)
-                time.sleep(3)
-
-            log("✓ Successfully logged in")
-            return True
-
-        except Exception as e:
-            log(f"❌ Login failed: {e}")
-            return False
-
-    def _crawl_category(
+    def _extract_products_recursive(
         self,
-        page: Page,
-        category_url: str,
-        log: Callable
-    ) -> List[Dict[str, Any]]:
+        categories: List[Dict],
+        log: Callable,
+        products: List[Dict] = None,
+        parent_path: str = ""
+    ) -> List[Dict]:
         """
-        Crawl a category page and extract product URLs.
+        Recursively extract products from category tree.
 
         Args:
-            page: Playwright Page object
-            category_url: Category URL (e.g., "/pavers/sherwood")
+            categories: List of category dictionaries from API
             log: Logging function
+            products: Accumulated product list (internal)
+            parent_path: Parent category path (internal)
 
         Returns:
-            List of product dictionaries
+            List of product dictionaries with title, url, category
         """
-        products = []
+        if products is None:
+            products = []
 
-        try:
-            # Navigate to category
-            full_url = f"{self.portal_origin}{category_url}"
-            log(f"  Navigating to: {full_url}")
-            page.goto(full_url, wait_until="networkidle", timeout=30000)
-            time.sleep(3)
+        for category in categories:
+            # Extract fields
+            name = category.get("name", "")
+            fullurl = category.get("fullurl", "")
+            level = int(category.get("level", "1"))
 
-            # Extract all product links
-            # Look for links that match product patterns
-            links = page.locator('a[href*="/pavers/"], a[href*="/walls/"], a[href*="/edging/"]').all()
+            # Determine if this is a product or category
+            # Products typically have level >= 3 and have a fullurl
+            # Categories are level 1-2
+            is_product = level >= 3 and fullurl and fullurl.count("/") >= 3
 
-            for link in links:
-                try:
-                    href = link.get_attribute("href")
-                    if not href:
-                        continue
+            if is_product:
+                # This is a product
+                products.append({
+                    "title": name,
+                    "url": fullurl,
+                    "category": parent_path
+                })
+            else:
+                # This is a category - update parent path for subcategories
+                if fullurl:
+                    parent_path = fullurl
 
-                    # Skip if it's just a category link
-                    if href == category_url or href.count("/") <= 2:
-                        continue
+            # Recurse into subcategories
+            if "categories" in category:
+                self._extract_products_recursive(
+                    category["categories"],
+                    log,
+                    products,
+                    parent_path
+                )
 
-                    # Extract product title from link text or nearby element
-                    title = link.inner_text().strip()
-                    if not title:
-                        continue
-
-                    # Check if this is a product URL (not a category)
-                    # Product URLs typically have 3+ path segments
-                    if href.count("/") >= 3:
-                        products.append({
-                            "title": title,
-                            "url": href,
-                            "category": category_url
-                        })
-
-                except Exception as e:
-                    log(f"    ⚠ Error extracting link: {e}")
-                    continue
-
-        except Exception as e:
-            log(f"  ❌ Error crawling category {category_url}: {e}")
-
-        # Deduplicate products by URL
-        seen_urls = set()
-        unique_products = []
-        for product in products:
-            if product["url"] not in seen_urls:
-                seen_urls.add(product["url"])
-                unique_products.append(product)
-
-        return unique_products
+        return products
 
     def _create_index(self, products: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
