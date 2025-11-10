@@ -123,17 +123,99 @@ images.extend(public_data["gallery_images"])
 
 ### Always Follow Shared Guidelines
 
-**CRITICAL:** This project MUST comply with:
-- `/Users/moosemarketer/Code/shared-docs/python/**`
-- `/Users/moosemarketer/Code/garoppos/collectors/shared-docs/**`
+**CRITICAL:** This project MUST comply with ALL shared-docs requirements.
 
-Key standards:
-- Project structure (src/, tests/, etc.)
-- GUI design patterns (ttkbootstrap, threading, queues)
-- Output format (Shopify GraphQL 2025-10)
-- UPCItemDB fallback requirements (if needed)
+#### Before Writing Any Code
 
-**When updating code:** Always reference these docs via context7 or direct reads.
+1. **Use Context7 for Current Library Documentation**
+   - ALWAYS fetch latest docs using Context7 MCP tools
+   - Use `mcp__context7__resolve-library-id` to find library
+   - Use `mcp__context7__get-library-docs` to get documentation
+   - Common libraries:
+     - Requests: `/psf/requests`
+     - BeautifulSoup: `/wention/beautifulsoup4`
+     - Playwright: `/microsoft/playwright-python`
+     - Pandas: `/pandas-dev/pandas`
+
+2. **Review All Shared Requirements**
+   - **Project Structure**: `/Users/moosemarketer/Code/shared-docs/python/PROJECT_STRUCTURE_REQUIREMENTS.md`
+     - pyenv virtual environment setup (Python 3.12.9)
+     - Module organization (src/, tests/, utils/)
+     - Requirements files (requirements.txt, requirements-gui.txt, requirements-dev.txt)
+     - Entry points (main.py, gui.py)
+     - Comprehensive automated testing
+     - Git workflow (create tests, run tests, fix errors, commit)
+
+   - **Compliance Checklist**: `/Users/moosemarketer/Code/shared-docs/python/COMPLIANCE_CHECKLIST.md`
+     - Verify ALL files exist (entry points, requirements files, tests/, etc.)
+     - Check .gitignore excludes correct patterns
+     - Ensure documentation is complete and current
+
+   - **GUI Design**: `/Users/moosemarketer/Code/shared-docs/python/GUI_DESIGN_REQUIREMENTS.md`
+     - ttkbootstrap framework with darkly theme
+     - Thread-safe queue-based communication
+     - Auto-save configuration
+     - Tooltips with ⓘ icons
+     - Processing modes (skip/overwrite)
+     - Record range selection
+
+   - **GraphQL Output**: `/Users/moosemarketer/Code/shared-docs/python/GRAPHQL_OUTPUT_REQUIREMENTS.md`
+     - Shopify GraphQL API 2025-10 format
+     - Use `descriptionHtml` (NOT `body_html`)
+     - Use `status: "ACTIVE"` (NOT `published: true`)
+     - Proper metafield structure
+
+   - **Git Workflow**: `/Users/moosemarketer/Code/shared-docs/python/GIT_WORKFLOW.md`
+     - Commit message format with Co-Authored-By
+     - Never skip hooks or force push
+     - Check authorship before amending
+
+   - **Technical Docs**: `/Users/moosemarketer/Code/shared-docs/python/TECHNICAL_DOCS.md`
+     - Shopify product uploader patterns
+     - API integration standards
+
+3. **Review Collector-Specific Requirements**
+   - **Input Structure**: `/Users/moosemarketer/Code/garoppos/collectors/shared-docs/INPUT_FILE_STRUCTURE.md`
+     - Required fields (item_#, description_1, size, upc_updated, etc.)
+     - Variant support fields (parent, option_1-4, color)
+     - Data type specifications
+
+   - **UPCItemDB Fallback**: `/Users/moosemarketer/Code/garoppos/collectors/shared-docs/UPCITEMDB_FALLBACK_REQUIREMENTS.md`
+     - Image quality assessment (Laplacian variance)
+     - Placeholder detection (perceptual hashing)
+     - Fallback decision flow
+     - Field mapping for fallback data
+
+#### After Writing Code
+
+4. **Create Comprehensive Automated Tests**
+   - Write tests in `tests/` directory
+   - Cover all major functionality
+   - Use sample/mock data where possible
+   - Include `tests/__init__.py`, `tests/README.md`, `tests/.gitignore`
+
+5. **Run Tests Yourself and Fix Errors**
+   - Execute: `./run_tests.sh` or `./run_tests.sh --all`
+   - Read and analyze all test output
+   - Fix any failures in source code
+   - Re-run until all tests pass
+   - NEVER proceed to commit with failing tests
+
+6. **Commit to GitHub**
+   - Stage changes: `git add .`
+   - Commit with descriptive message
+   - Include `🤖 Generated with [Claude Code]` footer
+   - Include `Co-Authored-By: Claude <noreply@anthropic.com>`
+   - Push to remote: `git push`
+
+**Key Standards:**
+- Python 3.12.9 with pyenv virtual environment named "cambridge"
+- Three requirements files: requirements.txt, requirements-gui.txt, requirements-dev.txt
+- Dual entry points: main.py (CLI), gui.py (GUI)
+- Comprehensive tests with `tests/__init__.py`, `tests/README.md`, `tests/.gitignore`
+- Thread-safe GUI with queue-based communication
+- Shopify GraphQL 2025-10 output format
+- Always update README.md when adding features (in same commit)
 
 ---
 
