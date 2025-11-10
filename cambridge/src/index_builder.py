@@ -288,7 +288,17 @@ def is_index_stale(index: Dict[str, Any], max_age_days: int = 7) -> bool:
 
     try:
         last_updated = datetime.fromisoformat(index["last_updated"])
-        age_days = (datetime.now() - last_updated).days
+
+        # Handle both timezone-aware and timezone-naive timestamps
+        if last_updated.tzinfo is not None:
+            # Timestamp is timezone-aware (has Z suffix), compare with UTC now
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
+        else:
+            # Timestamp is timezone-naive, compare with local now
+            now = datetime.now()
+
+        age_days = (now - last_updated).days
         return age_days > max_age_days
     except Exception:
         return True
