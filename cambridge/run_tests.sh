@@ -12,10 +12,11 @@ echo "Cambridge Product Collector - Test Suite"
 echo "================================================================================"
 echo ""
 
-# Activate virtual environment if it exists
-if [ -d "venv" ]; then
-    echo "Activating virtual environment..."
-    source venv/bin/activate
+# Verify pyenv virtualenv is active
+if [ "$PYENV_VERSION" != "cambridge" ] && [ "$(cat .python-version 2>/dev/null)" == "cambridge" ]; then
+    echo "Activating cambridge pyenv virtualenv..."
+    eval "$(pyenv init -)"
+    pyenv activate cambridge 2>/dev/null || true
     echo ""
 fi
 

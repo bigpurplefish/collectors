@@ -5,10 +5,13 @@ __pycache__/
 *.so
 .Python
 env/
-venv/
+venv/  # Old-style venv (not used - we use pyenv virtualenv)
 *.egg-info/
 dist/
 build/
+
+# Note: We use pyenv virtualenv named "cambridge" (specified in .python-version)
+# No venv directory should exist in project
 
 # Project-specific
 /input/*

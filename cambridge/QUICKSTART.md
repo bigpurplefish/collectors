@@ -5,12 +5,11 @@
 ```bash
 cd /Users/moosemarketer/Code/garoppos/collectors/cambridge
 
-# Set Python version (already configured)
-pyenv local 3.12.9
+# Create pyenv virtualenv named "cambridge"
+pyenv virtualenv 3.12.9 cambridge
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# Activate (or it's already active via .python-version)
+pyenv local cambridge
 
 # Upgrade pip
 pip install --upgrade pip
