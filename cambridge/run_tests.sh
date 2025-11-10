@@ -27,7 +27,14 @@ python3 tests/test_parsers.py
 PARSER_RESULT=$?
 echo ""
 
-# Test 2: Index Builder (slow, optional)
+# Test 2: Portal Search Tests (fast)
+echo "Running Portal Search Tests (fast)..."
+echo "--------------------------------------------------------------------------------"
+python3 tests/test_portal_search.py
+PORTAL_SEARCH_RESULT=$?
+echo ""
+
+# Test 3: Index Builder (slow, optional)
 if [ "$1" == "--all" ]; then
     echo "Running Index Builder Tests (slow)..."
     echo "--------------------------------------------------------------------------------"
@@ -40,7 +47,7 @@ else
     echo ""
 fi
 
-# Test 3: Workflow Test (moderate, optional)
+# Test 4: Workflow Test (moderate, optional)
 if [ "$1" == "--all" ]; then
     echo "Running End-to-End Workflow Test (moderate)..."
     echo "--------------------------------------------------------------------------------"
@@ -64,6 +71,12 @@ else
     echo "✗ Parser Tests: FAILED"
 fi
 
+if [ $PORTAL_SEARCH_RESULT -eq 0 ]; then
+    echo "✓ Portal Search Tests: PASSED"
+else
+    echo "✗ Portal Search Tests: FAILED"
+fi
+
 if [ "$1" == "--all" ]; then
     if [ $INDEX_RESULT -eq 0 ]; then
         echo "✓ Index Builder Tests: PASSED"
@@ -84,7 +97,7 @@ fi
 echo "================================================================================"
 
 # Exit with failure if any test failed
-if [ $PARSER_RESULT -ne 0 ] || [ $INDEX_RESULT -ne 0 ] || [ $WORKFLOW_RESULT -ne 0 ]; then
+if [ $PARSER_RESULT -ne 0 ] || [ $PORTAL_SEARCH_RESULT -ne 0 ] || [ $INDEX_RESULT -ne 0 ] || [ $WORKFLOW_RESULT -ne 0 ]; then
     exit 1
 fi
 
