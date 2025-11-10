@@ -12,6 +12,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from src.portal_index_builder import CambridgePortalIndexBuilder
+from src.index_builder import save_index_to_cache, load_index_from_cache
+from src.config import PORTAL_INDEX_CACHE_FILE
 
 
 def test_portal_index_builder():
@@ -70,10 +72,23 @@ def test_portal_index_builder():
         print(f"  {i}. {product['title']}")
         print(f"     URL: {product['url']}")
         print(f"     Category: {product['category']}")
+    print("")
+
+    # Test cache save/load functionality
+    print("Testing cache save/load...")
+    save_index_to_cache(index, PORTAL_INDEX_CACHE_FILE, print)
+    print("✓ Cache saved")
+
+    # Load from cache and verify
+    loaded_index = load_index_from_cache(PORTAL_INDEX_CACHE_FILE, print)
+    assert loaded_index is not None, "Failed to load index from cache"
+    assert loaded_index["total_products"] == total, "Loaded index has different product count"
+    assert len(loaded_index["products"]) == len(products), "Loaded index has different number of products"
+    print("✓ Cache loaded and verified")
 
     print("")
     print("=" * 80)
-    print("✓ TEST PASSED: Portal index builder working correctly")
+    print("✓ TEST PASSED: Portal index builder and cache working correctly")
     print("=" * 80)
     print("")
 
