@@ -5,9 +5,15 @@
 ```bash
 cd /Users/moosemarketer/Code/garoppos/collectors/cambridge
 
+# Set Python version (already configured)
+pyenv local 3.12.9
+
 # Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip
 
 # Install dependencies
 pip install -r requirements-gui.txt

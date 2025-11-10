@@ -41,12 +41,24 @@ Core dependencies are listed in `requirements.txt`:
 
 ## Installation
 
-### 1. Create Virtual Environment
+### 1. Setup Python Environment
+
+This project requires Python 3.12.9 managed with pyenv.
 
 ```bash
 cd /Users/moosemarketer/Code/garoppos/collectors/cambridge
+
+# Set Python version (already configured via .python-version)
+pyenv local 3.12.9
+
+# Create virtual environment
 python3 -m venv venv
+
+# Activate virtual environment
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Upgrade pip
+pip install --upgrade pip
 ```
 
 ### 2. Install Dependencies
