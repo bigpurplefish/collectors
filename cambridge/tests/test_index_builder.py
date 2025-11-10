@@ -171,18 +171,31 @@ def test_index_cache():
 
 
 if __name__ == "__main__":
+    import sys
+
     print("\nRunning Index Builder Tests\n")
 
     # Test 1: Cache functionality (fast)
     cache_passed = test_index_cache()
 
     # Test 2: Live index building (slow)
-    print("\n\nWARNING: Next test will crawl live Cambridge website (2-3 minutes)")
-    response = input("Continue? (y/n): ")
-    if response.lower() == 'y':
+    # Check if running in automated mode (via command line arg)
+    run_live_test = False
+    if len(sys.argv) > 1 and sys.argv[1] == '--live':
+        run_live_test = True
+    elif sys.stdin.isatty():  # Only prompt if interactive
+        print("\n\nWARNING: Next test will crawl live Cambridge website (2-3 minutes)")
+        try:
+            response = input("Continue? (y/n): ")
+            if response.lower() == 'y':
+                run_live_test = True
+        except EOFError:
+            print("Non-interactive mode detected, skipping live test")
+
+    if run_live_test:
         index_passed = test_index_builder()
     else:
-        print("Skipping live index building test")
+        print("Skipping live index building test (use --live flag to enable)")
         index_passed = True
 
     # Summary
