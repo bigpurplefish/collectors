@@ -188,20 +188,33 @@ images.extend(public_data["gallery_images"])
 
 #### After Writing Code
 
+**MANDATORY WORKFLOW:** Follow the sequence documented in PROJECT_STRUCTURE_REQUIREMENTS.md:
+
+```
+Code → Tests → Run Tests → Fix Errors → Re-run → Update README → Commit
+```
+
 4. **Create Comprehensive Automated Tests**
    - Write tests in `tests/` directory
-   - Cover all major functionality
+   - Cover all major functionality (parsers, search, index builders, workflow)
    - Use sample/mock data where possible
    - Include `tests/__init__.py`, `tests/README.md`, `tests/.gitignore`
 
 5. **Run Tests Yourself and Fix Errors**
-   - Execute: `./run_tests.sh` or `./run_tests.sh --all`
-   - Read and analyze all test output
+   - Execute: `./run_tests.sh` (fast tests)
+   - Execute: `./run_tests.sh --all` (full test suite)
+   - Read and analyze ALL test output completely
    - Fix any failures in source code
-   - Re-run until all tests pass
-   - NEVER proceed to commit with failing tests
+   - Re-run until 100% tests pass
+   - **NEVER commit with failing tests**
 
-6. **Commit to GitHub**
+6. **Update README.md**
+   - Document new/changed functionality
+   - Update Features section
+   - Update Architecture if needed
+   - Same commit as code changes
+
+7. **Commit to GitHub**
    - Stage changes: `git add .`
    - Commit with descriptive message
    - Include `🤖 Generated with [Claude Code]` footer
