@@ -6,10 +6,17 @@ Handles:
 - Generating Shopify GraphQL-compatible products
 - Image ordering (product images first, then lifestyle images)
 - Metafields creation
+- SKU generation for products without SKUs
 """
 
+import sys
+from pathlib import Path
 from typing import Dict, List, Any, Callable
 from collections import defaultdict
+
+# Add parent collectors directory to path for shared imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
+from utils.sku_generator import SKUGenerator
 
 
 class CambridgeProductGenerator:
@@ -23,6 +30,7 @@ class CambridgeProductGenerator:
             config: Optional configuration dictionary
         """
         self.config = config or {}
+        self.sku_generator = SKUGenerator()
 
     def group_by_title(
         self,
@@ -162,12 +170,15 @@ class CambridgeProductGenerator:
             sales_unit = portal_data.get("sales_unit", "")
             model_number = portal_data.get("model_number", "")
 
+            # Generate SKU (Cambridge products don't have SKUs)
+            sku = self.sku_generator.generate_unique_sku()
+
             # Build variant
             variant = {
-                "sku": str(item_number) if item_number else "",
+                "sku": sku,
                 "price": str(price) if price else "0.00",
                 "cost": cost,
-                "barcode": "",  # Cambridge products may not have barcodes
+                "barcode": sku,  # Use generated SKU as barcode
                 "inventory_quantity": 0,
                 "position": i + 1,
                 "option1": color,

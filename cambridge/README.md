@@ -16,6 +16,7 @@ The Cambridge collector:
 - ✅ Cached product index (auto-refreshes if stale)
 - ✅ Fuzzy title matching for product search
 - ✅ Automatic variant grouping by title
+- ✅ Automatic SKU generation (cross-collector uniqueness)
 - ✅ Dealer portal authentication (Playwright-based)
 - ✅ Skip/overwrite processing modes
 - ✅ Record range selection
@@ -359,6 +360,44 @@ Both indexes are cached and auto-refresh when stale.
 - Sales unit (unit of sale)
 - Cost/price
 - Vendor SKU (model number)
+
+---
+
+## SKU Generation
+
+Cambridge products do not have SKUs in the source data. The collector uses a **shared SKU generator utility** that ensures unique SKU assignment across all collectors in the Garoppos project.
+
+### How It Works
+
+1. **Automatic Generation**: Every product variant automatically receives a unique 5-digit SKU starting from 50000
+2. **Cross-Collector Uniqueness**: Uses a persistent registry file (`cache/sku_registry.json`) shared across all collectors
+3. **Thread-Safe**: Safe for concurrent use across multiple collector instances
+4. **Barcode Assignment**: The generated SKU is also used as the product barcode
+
+### Implementation
+
+The SKU generator is implemented in `/shared/utils/sku_generator.py` and is automatically initialized when the product generator starts.
+
+```python
+# Example usage (handled automatically)
+from shared.utils.sku_generator import SKUGenerator
+
+generator = SKUGenerator()
+sku = generator.generate_unique_sku()  # Returns "50000", "50001", etc.
+```
+
+### Registry Location
+
+The SKU registry is stored at `/collectors/cache/sku_registry.json` (parent-level cache) to ensure uniqueness across:
+- Cambridge collector
+- TechoBlocskirt collector
+- All other collectors in the project
+
+### Persistence
+
+- SKUs are persisted immediately upon generation
+- If a collector crashes, the registry ensures no SKU duplication on restart
+- The registry tracks both used SKUs and the next available SKU number
 
 ---
 
