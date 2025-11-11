@@ -385,35 +385,45 @@ class CambridgeProductGenerator:
             first_portal_data = portal_data_by_color.get(first_color, {})
             first_sales_unit = first_portal_data.get("sales_unit", "") if has_unit_option else ""
 
-            # Generate alt tag for first variant (all public images use this)
-            public_alt_tag = generate_variant_alt_tag(
+            # Generate variant filter tag for first variant (all public images use this)
+            variant_filter = generate_variant_alt_tag(
                 option1=first_color,
                 option2=first_sales_unit if has_unit_option else "",
                 option3="",
                 option4=""
             )
 
-            # Add hero image with variant alt tag
+            # Add hero image with descriptive alt tag + variant filter
             hero_image = public_data.get("hero_image", "")
             if hero_image:
                 cleaned_url = clean_and_verify_image_url(hero_image, timeout=10)
                 if cleaned_url:
+                    # Hero alt: "Product Title - Hero #option1#option2"
+                    hero_alt = generate_lifestyle_alt_tag(product_title, "Hero")
+                    if variant_filter:
+                        hero_alt = f"{hero_alt} {variant_filter}"
+
                     images.append({
                         "position": position,
                         "src": cleaned_url,
-                        "alt": public_alt_tag
+                        "alt": hero_alt
                     })
                     position += 1
 
-            # Add gallery images with variant alt tags
+            # Add gallery images with descriptive alt tags + variant filters
             gallery_images = public_data.get("gallery_images", [])
             for img_url in gallery_images:
                 cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
                 if cleaned_url:
+                    # Gallery alt: "Product Title - Lifestyle #option1#option2"
+                    gallery_alt = generate_lifestyle_alt_tag(product_title, "Lifestyle")
+                    if variant_filter:
+                        gallery_alt = f"{gallery_alt} {variant_filter}"
+
                     images.append({
                         "position": position,
                         "src": cleaned_url,
-                        "alt": public_alt_tag
+                        "alt": gallery_alt
                     })
                     position += 1
 
