@@ -415,14 +415,4 @@ class CambridgeProductGenerator:
                 "type": "rich_text_field"
             })
 
-        # Collection metafield
-        collection = public_data.get("collection", "")
-        if collection:
-            metafields.append({
-                "namespace": "custom",
-                "key": "collection",
-                "value": collection,
-                "type": "single_line_text_field"
-            })
-
         return metafields
