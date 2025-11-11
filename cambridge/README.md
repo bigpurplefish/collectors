@@ -277,10 +277,12 @@ Configuration is stored in `config.json` (auto-generated on first run).
 
 The collector builds TWO searchable product indexes:
 
-1. **Public Site Index** (`cache/product_index.json`) - Crawls www.cambridgepavers.com
-2. **Portal Index** (`cache/portal_product_index.json`) - Uses navigation API from shop.cambridgepavers.com
+1. **Public Site Index** (`cache/product_index.json`) - Crawls www.cambridgepavers.com to find product detail pages
+2. **Portal Index** (`cache/portal_product_index.json`) - Uses navigation API from shop.cambridgepavers.com to find product category pages
 
 Both indexes are cached and auto-refresh when stale.
+
+**Important:** The portal index contains URLs to **category pages** (which display product grids with all color variants), not individual product pages. Individual product details (SKUs, prices, stock, images) are collected during the scraping phase using Playwright with authentication.
 
 **Note:** The portal index uses the navigation API endpoint instead of crawling, making it faster and more reliable. No authentication is required for index building.
 
@@ -324,7 +326,10 @@ Both indexes are cached and auto-refresh when stale.
 }
 ```
 
-**Note:** Portal uses SEO-friendly URLs (e.g., `/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit`), unlike the public site which uses `prodid` parameters. Product titles from the navigation API may not include collection prefixes (e.g., "Ledgestone 3-Pc. Design Kit" instead of "Sherwood Ledgestone 3-Pc. Design Kit"), but fuzzy matching handles this correctly.
+**Notes:**
+- Portal uses SEO-friendly category URLs (e.g., `/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit`), unlike the public site which uses `prodid` parameters
+- Product titles from the navigation API may not include collection prefixes (e.g., "Ledgestone 3-Pc. Design Kit" instead of "Sherwood Ledgestone 3-Pc. Design Kit"), but fuzzy matching handles this correctly
+- Portal URLs point to category pages that contain product grids; individual product details are scraped during collection
 
 ---
 

@@ -2,7 +2,12 @@
 Portal Index Builder for Cambridge Dealer Portal
 
 Builds a searchable index of products from the dealer portal (shop.cambridgepavers.com).
-Uses the navigation API to fetch complete product hierarchy.
+
+Uses the navigation API to extract product category URLs. These URLs point to category
+pages that contain product grids with all color variants.
+
+Individual product details (SKUs, prices, stock, images) are collected during the actual
+scraping phase using Playwright with authentication.
 
 The portal uses SEO-friendly URLs like:
 /pavers/sherwood/sherwood-ledgestone-3-pc-design-kit
@@ -41,13 +46,17 @@ class CambridgePortalIndexBuilder:
         """
         Build product index using navigation API.
 
+        Extracts product category URLs from the navigation API. These category pages
+        contain product grids with all color variants. Individual product details
+        are collected during scraping using Playwright with authentication.
+
         Args:
             log: Logging function
 
         Returns:
             Dictionary with:
             - last_updated: ISO timestamp
-            - total_products: Count of products
+            - total_products: Count of product categories
             - products: List of product dictionaries with title, url, category
         """
         log("")
@@ -120,7 +129,7 @@ class CambridgePortalIndexBuilder:
             is_product = level >= 3 and fullurl and fullurl.count("/") >= 3
 
             if is_product:
-                # This is a product
+                # This is a product category page
                 products.append({
                     "title": name,
                     "url": fullurl,
