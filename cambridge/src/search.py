@@ -71,9 +71,19 @@ class CambridgeSearcher:
             log("❌ Product index is empty")
             return None
 
-        log(f"Searching for: title='{title}', color='{color}'")
+        # Strip color family prefix from title for public index search
+        # Portal titles have color families like "Sherwood", but public index doesn't
+        color_families = ["Sherwood", "Crusader", "Excalibur", "Kingscourt", "Roundtable"]
+        search_title = title
+        for family in color_families:
+            if title.startswith(family + " "):
+                search_title = title[len(family) + 1:]  # Remove "Family " prefix
+                log(f"Stripped color family '{family}' from title")
+                break
 
-        # Phase 1: Fuzzy match on title
+        log(f"Searching for: title='{search_title}' (original: '{title}'), color='{color}'")
+
+        # Phase 1: Fuzzy match on title (using search_title without color family prefix)
         best_match = None
         best_score = 0
 
@@ -81,7 +91,7 @@ class CambridgeSearcher:
             product_title = product.get("title", "")
 
             # Calculate fuzzy match score
-            score = fuzz.token_sort_ratio(title.lower(), product_title.lower())
+            score = fuzz.token_sort_ratio(search_title.lower(), product_title.lower())
 
             if score > best_score:
                 best_score = score

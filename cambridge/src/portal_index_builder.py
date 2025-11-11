@@ -146,7 +146,14 @@ class CambridgePortalIndexBuilder:
             Dictionary with:
             - last_updated: ISO timestamp
             - total_products: Count of individual products
-            - products: List of product dictionaries with title, url, category, sku, price, stock, images
+            - products: List of product dictionaries with:
+                - title: Product name with color family prefix (e.g., "Sherwood Ledgestone 3-Pc. Design Kit")
+                - url: Product URL
+                - category: Category URL
+                - sku: Product SKU
+                - price: Product price
+                - stock: Stock quantity
+                - images: List of image URLs
         """
         log("")
         log("=" * 80)
@@ -269,7 +276,8 @@ class CambridgePortalIndexBuilder:
             log: Logging function
 
         Returns:
-            List of product dictionaries with title, url, category, sku, price, stock, images
+            List of product dictionaries with title (including color family prefix),
+            url, category, sku, price, stock, images
         """
         if not self._logged_in or not self._page:
             log(f"      ⚠ Not logged in, skipping category")
@@ -320,8 +328,24 @@ class CambridgePortalIndexBuilder:
                 # Build full product URL
                 product_url = f"{category_url}/{url_component}" if url_component else category_url
 
+                # Extract color family from category URL and prepend to title if not already present
+                # Category URL format: /pavers/sherwood/...
+                # We want to extract "Sherwood" and prepend it to the displayname IF IT'S NOT ALREADY THERE
+                color_family = ""
+                category_parts = category_url.strip("/").split("/")
+                if len(category_parts) >= 2:
+                    # category_parts[0] is "pavers" or "walls"
+                    # category_parts[1] is the color family (e.g., "sherwood", "crusader")
+                    color_family = category_parts[1].replace("-", " ").title()
+
+                # Build full title with color family prefix (only if not already in displayname)
+                if color_family and not display_name.lower().startswith(color_family.lower()):
+                    full_title = f"{color_family} {display_name}"
+                else:
+                    full_title = display_name
+
                 products.append({
-                    "title": display_name,
+                    "title": full_title,
                     "url": product_url,
                     "category": category_url,
                     "sku": item_id,
