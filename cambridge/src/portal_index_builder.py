@@ -326,7 +326,18 @@ class CambridgePortalIndexBuilder:
                                 images.append(img_url)
 
                 # Build full product URL
-                product_url = f"{category_url}/{url_component}" if url_component else category_url
+                # Sometimes the API returns malformed urlcomponent with full product title embedded
+                # e.g., "Sherwood-Ledgestone-3-Pc.-Design-Kit-Onyx-Natural" should be just "Onyx-Natural"
+                clean_component = url_component
+                if url_component and display_name:
+                    # Create URL-safe version of display name to check for prefix (keep periods)
+                    display_name_url = display_name.replace(" ", "-")
+                    # If urlcomponent starts with the display name, strip it
+                    if url_component.startswith(display_name_url):
+                        # Remove the display name prefix and any separating hyphens
+                        clean_component = url_component[len(display_name_url):].lstrip("-")
+
+                product_url = f"{category_url}/{clean_component}" if clean_component else category_url
 
                 # Extract color family from category URL and prepend to title if not already present
                 # Category URL format: /pavers/sherwood/...
