@@ -13,25 +13,38 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from src.portal_index_builder import CambridgePortalIndexBuilder
 from src.index_builder import save_index_to_cache, load_index_from_cache
-from src.config import PORTAL_INDEX_CACHE_FILE
+from src.config import PORTAL_INDEX_CACHE_FILE, load_config
 
 
 def test_portal_index_builder():
-    """Test portal index builder with live API."""
+    """Test portal index builder with authenticated two-stage API."""
     print("")
     print("=" * 80)
-    print("TEST: Portal Index Builder (Navigation API)")
+    print("TEST: Portal Index Builder (Two-Stage Authenticated API)")
     print("=" * 80)
     print("")
 
-    # Initialize builder
+    # Load config to get credentials
+    cfg = load_config()
+
+    # Check if credentials are configured
+    if not cfg.get("portal_username") or not cfg.get("portal_password"):
+        print("⚠ SKIPPED: Portal credentials not configured in config.json")
+        print("   Please configure portal_username and portal_password to run this test")
+        return True
+
+    # Initialize builder with credentials
     config = {
-        "portal_origin": "https://shop.cambridgepavers.com"
+        "portal_origin": "https://shop.cambridgepavers.com",
+        "portal_username": cfg.get("portal_username"),
+        "portal_password": cfg.get("portal_password")
     }
     builder = CambridgePortalIndexBuilder(config)
 
     # Build index
-    print("Building portal product index from navigation API...")
+    print("Building portal product index using two-stage authenticated API...")
+    print("(This will take several minutes as it queries search API for each category)")
+    print("")
     index = builder.build_index(print)
 
     # Validate index structure
@@ -47,31 +60,44 @@ def test_portal_index_builder():
     assert len(products) == total, f"Product count mismatch: {len(products)} vs {total}"
     print(f"✓ Found {total} products")
 
-    # Validate products have required fields
+    # Validate products have required fields (including search API fields)
     for i, product in enumerate(products[:5]):  # Check first 5
         assert "title" in product, f"Product {i} missing 'title'"
         assert "url" in product, f"Product {i} missing 'url'"
         assert "category" in product, f"Product {i} missing 'category'"
+        assert "sku" in product, f"Product {i} missing 'sku'"
+        assert "price" in product, f"Product {i} missing 'price'"
+        assert "stock" in product, f"Product {i} missing 'stock'"
+        assert "images" in product, f"Product {i} missing 'images'"
 
-        # Validate URL format
+        # Validate URL format (includes urlcomponent)
         url = product["url"]
         assert url.startswith("/"), f"Product {i} URL should start with '/': {url}"
         assert url.count("/") >= 3, f"Product {i} URL should have 3+ segments: {url}"
 
-    print(f"✓ All products have required fields")
+        # Validate images is a list
+        assert isinstance(product["images"], list), f"Product {i} images should be a list"
+
+    print(f"✓ All products have required fields (including SKU, price, stock, images)")
 
     # Check for Sherwood products (known category)
     sherwood_products = [p for p in products if "/sherwood" in p.get("url", "")]
     assert len(sherwood_products) > 0, "Should find Sherwood products"
     print(f"✓ Found {len(sherwood_products)} Sherwood products")
 
-    # Display sample products
+    # Display sample products with new fields
     print("")
     print("Sample products:")
-    for i, product in enumerate(products[:5], 1):
+    for i, product in enumerate(products[:3], 1):
         print(f"  {i}. {product['title']}")
         print(f"     URL: {product['url']}")
         print(f"     Category: {product['category']}")
+        print(f"     SKU: {product['sku']}")
+        print(f"     Price: ${product['price']}")
+        print(f"     Stock: {product['stock']}")
+        print(f"     Images: {len(product['images'])} image(s)")
+        if product['images']:
+            print(f"     First Image: {product['images'][0][:80]}...")
     print("")
 
     # Test cache save/load functionality
@@ -100,8 +126,11 @@ if __name__ == "__main__":
         print("")
         print("Running Portal Index Builder Tests")
         print("")
-        print("NOTE: This test fetches live data from the navigation API.")
-        print("      It requires an internet connection.")
+        print("NOTE: This test uses authenticated APIs to fetch product data.")
+        print("      It requires:")
+        print("      - Internet connection")
+        print("      - Portal credentials configured in config.json")
+        print("      - Several minutes to complete (queries 362 categories)")
         print("")
 
         test_portal_index_builder()

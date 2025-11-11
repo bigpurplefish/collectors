@@ -278,13 +278,15 @@ Configuration is stored in `config.json` (auto-generated on first run).
 The collector builds TWO searchable product indexes:
 
 1. **Public Site Index** (`cache/product_index.json`) - Crawls www.cambridgepavers.com to find product detail pages
-2. **Portal Index** (`cache/portal_product_index.json`) - Uses navigation API from shop.cambridgepavers.com to find product category pages
+2. **Portal Index** (`cache/portal_product_index.json`) - Uses two-stage authenticated API to fetch individual product variants from shop.cambridgepavers.com
 
 Both indexes are cached and auto-refresh when stale.
 
-**Important:** The portal index contains URLs to **category pages** (which display product grids with all color variants), not individual product pages. Individual product details (SKUs, prices, stock, images) are collected during the scraping phase using Playwright with authentication.
+**Portal Index Two-Stage Approach:**
+1. **Stage 1 (Navigation API)** - Fetches category URLs (no auth required, ~362 categories)
+2. **Stage 2 (Search API)** - Authenticates with Playwright and fetches individual products with SKUs, prices, stock, and images for each category
 
-**Note:** The portal index uses the navigation API endpoint instead of crawling, making it faster and more reliable. No authentication is required for index building.
+**Important:** Portal index building requires dealer portal credentials and takes several minutes to complete (queries 362 categories via authenticated search API). The resulting index contains complete product data including SKUs, prices, stock levels, and images.
 
 ### Index Management
 
@@ -314,22 +316,30 @@ Both indexes are cached and auto-refresh when stale.
 **Portal Index Structure:**
 ```json
 {
-  "last_updated": "2025-11-10T12:00:00",
-  "total_products": 362,
+  "last_updated": "2025-11-10T12:00:00Z",
+  "total_products": 850,
   "products": [
     {
-      "title": "Ledgestone 3-Pc. Design Kit",
-      "url": "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit",
-      "category": "/pavers/sherwood"
+      "title": "Sherwood Ledgestone 3-Pc. Design Kit - Driftwood",
+      "url": "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit/Driftwood_6",
+      "category": "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit",
+      "sku": "ITEM123456",
+      "price": "5.99",
+      "stock": 1250,
+      "images": [
+        "https://shop.cambridgepavers.com/...",
+        "https://shop.cambridgepavers.com/..."
+      ]
     }
   ]
 }
 ```
 
 **Notes:**
-- Portal uses SEO-friendly category URLs (e.g., `/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit`), unlike the public site which uses `prodid` parameters
-- Product titles from the navigation API may not include collection prefixes (e.g., "Ledgestone 3-Pc. Design Kit" instead of "Sherwood Ledgestone 3-Pc. Design Kit"), but fuzzy matching handles this correctly
-- Portal URLs point to category pages that contain product grids; individual product details are scraped during collection
+- Portal uses SEO-friendly URLs with `urlcomponent` (e.g., `/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit/Driftwood_6`)
+- Each product includes SKU, price, stock level, and image URLs from the search API
+- Product titles include color variant names
+- Index contains individual products, not category pages
 
 ---
 
