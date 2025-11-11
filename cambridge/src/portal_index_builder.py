@@ -326,18 +326,16 @@ class CambridgePortalIndexBuilder:
                                 images.append(img_url)
 
                 # Build full product URL
-                # Sometimes the API returns malformed urlcomponent with full product title embedded
-                # e.g., "Sherwood-Ledgestone-3-Pc.-Design-Kit-Onyx-Natural" should be just "Onyx-Natural"
-                clean_component = url_component
-                if url_component and display_name:
-                    # Create URL-safe version of display name to check for prefix (keep periods)
-                    display_name_url = display_name.replace(" ", "-")
-                    # If urlcomponent starts with the display name, strip it
-                    if url_component.startswith(display_name_url):
-                        # Remove the display name prefix and any separating hyphens
-                        clean_component = url_component[len(display_name_url):].lstrip("-")
-
-                product_url = f"{category_url}/{clean_component}" if clean_component else category_url
+                # Portal URLs use just the LAST component of urlcomponent, not the full path
+                # API returns: /accessories/alliance-cleaners/.../Alliance-Gator-Clean-Sealer-Stripper-1-Gal.
+                # We need: /Alliance-Gator-Clean-Sealer-Stripper-1-Gal.
+                # Example: /Sherwood-Ledgestone-3-Pc.-Design-Kit-Onyx-Natural
+                if url_component:
+                    # Extract last component (split by / and take last part)
+                    last_component = url_component.strip("/").split("/")[-1]
+                    product_url = f"/{last_component}"
+                else:
+                    product_url = category_url
 
                 # Extract color family from category URL and prepend to title if not already present
                 # Category URL format: /pavers/sherwood/...
