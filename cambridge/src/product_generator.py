@@ -289,6 +289,16 @@ class CambridgeProductGenerator:
                     "metafields": variant["metafields"]
                 }
 
+            # Add color_swatch_image metafield (first portal gallery image)
+            gallery_images = portal_data.get("gallery_images", [])
+            if gallery_images:
+                variant["metafields"].append({
+                    "namespace": "custom",
+                    "key": "color_swatch_image",
+                    "value": gallery_images[0],
+                    "type": "single_line_text_field"
+                })
+
             # Add model number metafield if present
             if model_number:
                 variant["metafields"].append({
