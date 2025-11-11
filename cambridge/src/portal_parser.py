@@ -207,49 +207,40 @@ class CambridgePortalParser:
             return images
 
         try:
-            # Wait for gallery to load (adjust selector as needed for SuiteCommerce)
-            # Common SuiteCommerce gallery selectors:
-            # - .product-detail-images
-            # - .product-views-image-carousel
-            # - .bx-viewport img
+            # Wait for gallery to load - specific selector for bxSlider
             try:
-                self._page.wait_for_selector("img", timeout=5000)
+                self._page.wait_for_selector(".bx-viewport ul.bxslider li img", timeout=5000)
             except:
                 log("  ⚠ Gallery images not found")
                 return images
 
-            # Extract gallery images using Playwright
-            # Try multiple selector patterns for SuiteCommerce galleries
-            gallery_selectors = [
-                ".product-detail-images img",
-                ".product-views-image-carousel img",
-                ".bx-viewport img",
-                ".product-image-gallery img"
-            ]
-
-            gallery_images = []
-            for selector in gallery_selectors:
-                elements = self._page.query_selector_all(selector)
-                if elements:
-                    gallery_images = elements
-                    break
+            # Extract gallery images from bxSlider carousel
+            # Selector: .bx-viewport ul.bxslider li img (excluding clones)
+            gallery_images = self._page.query_selector_all(".bx-viewport ul.bxslider li:not(.bx-clone) img")
 
             if not gallery_images:
-                # Fallback: get all product images
-                gallery_images = self._page.query_selector_all("img")
+                log("  ⚠ No gallery images found in carousel")
+                return images
 
             # Extract src attributes in order
             for img in gallery_images:
                 src = img.get_attribute("src")
                 if src:
-                    # Skip thumbnails, icons, UI elements
-                    if any(skip in src.lower() for skip in ["thumb", "icon", "logo", "button", "sprite"]):
+                    # Skip thumbnails (resizeid=4), we want full images (resizeid=5)
+                    if "resizeid=4" in src:
                         continue
 
-                    # Normalize URL
+                    # Skip UI elements
+                    if any(skip in src.lower() for skip in ["icon", "logo", "button", "sprite"]):
+                        continue
+
+                    # Normalize URL and remove query params
                     full_url = self._normalize_url(src)
-                    if full_url and full_url not in images:
-                        images.append(full_url)
+                    # Strip resize params to get base URL
+                    base_url = full_url.split("?")[0]
+
+                    if base_url and base_url not in images:
+                        images.append(base_url)
 
             log(f"  Found {len(images)} gallery images")
             return images
@@ -260,7 +251,7 @@ class CambridgePortalParser:
 
     def _extract_weight(self, soup: BeautifulSoup, log: Callable) -> str:
         """
-        Extract item weight.
+        Extract item weight from custom PDP fields.
 
         Args:
             soup: BeautifulSoup object
@@ -269,27 +260,25 @@ class CambridgePortalParser:
         Returns:
             Weight string or empty string
         """
-        # Look for weight in product details
-        # Common patterns: "Weight:", "Item Weight:", etc.
-        for label in ["Weight:", "Item Weight:", "Shipping Weight:"]:
-            tag = soup.find(string=re.compile(label, re.IGNORECASE))
-            if tag:
-                parent = tag.find_parent()
-                if parent:
-                    text = parent.get_text(strip=True)
-                    # Extract weight value
-                    match = re.search(r"(\d+(?:\.\d+)?)\s*(lb|lbs|kg|kgs|oz)", text, re.IGNORECASE)
-                    if match:
-                        weight = f"{match.group(1)} {match.group(2)}"
-                        log(f"  Found weight: {weight}")
-                        return weight
+        # Look for "ITEM WEIGHT:" in custom PDP fields
+        # Format: <span class="custom-pdp-fields-label">ITEM WEIGHT: 3078 lb</span>
+        for span in soup.find_all("span", class_="custom-pdp-fields-label"):
+            text = span.get_text(strip=True)
+            if "ITEM WEIGHT:" in text.upper():
+                # Extract the weight value after the label
+                # Format: "ITEM WEIGHT: 3078 lb"
+                match = re.search(r"ITEM WEIGHT:\s*(\d+(?:\.\d+)?)\s*(lb|lbs|kg|kgs|oz)", text, re.IGNORECASE)
+                if match:
+                    weight = f"{match.group(1)} {match.group(2)}"
+                    log(f"  Found weight: {weight}")
+                    return weight
 
         log("  ⚠ Weight not found")
         return ""
 
     def _extract_sales_unit(self, soup: BeautifulSoup, log: Callable) -> str:
         """
-        Extract sales unit / unit of sale.
+        Extract sales unit / unit of sale from custom PDP fields.
 
         Args:
             soup: BeautifulSoup object
@@ -298,15 +287,16 @@ class CambridgePortalParser:
         Returns:
             Sales unit string or empty string
         """
-        # Look for sales unit in product details
-        for label in ["Sales Unit:", "Unit of Sale:", "Sold By:"]:
-            tag = soup.find(string=re.compile(label, re.IGNORECASE))
-            if tag:
-                parent = tag.find_parent()
-                if parent:
-                    text = parent.get_text(strip=True)
-                    # Remove label and get value
-                    value = re.sub(r"^[^:]+:\s*", "", text).strip()
+        # Look for "SALE UNIT:" in custom PDP fields
+        # Format: <span class="custom-pdp-fields-label">SALE UNIT: Cube</span>
+        for span in soup.find_all("span", class_="custom-pdp-fields-label"):
+            text = span.get_text(strip=True)
+            if "SALE UNIT:" in text.upper():
+                # Extract the value after the label
+                # Format: "SALE UNIT: Cube"
+                match = re.search(r"SALE UNIT:\s*(.+)", text, re.IGNORECASE)
+                if match:
+                    value = match.group(1).strip()
                     if value:
                         log(f"  Found sales unit: {value}")
                         return value
@@ -350,18 +340,14 @@ class CambridgePortalParser:
         Returns:
             Model number string or empty string
         """
-        # Look for SKU/model number in product details
-        for label in ["SKU:", "Model:", "Model Number:", "Vendor SKU:", "Item #:"]:
-            tag = soup.find(string=re.compile(label, re.IGNORECASE))
-            if tag:
-                parent = tag.find_parent()
-                if parent:
-                    text = parent.get_text(strip=True)
-                    # Remove label and get value
-                    value = re.sub(r"^[^:]+:\s*", "", text).strip()
-                    if value:
-                        log(f"  Found model number: {value}")
-                        return value
+        # Look for SKU in product line SKU element
+        # Format: <span class="product-line-sku-value" itemprop="sku"> 11003310 </span>
+        sku_span = soup.find("span", class_="product-line-sku-value")
+        if sku_span:
+            value = sku_span.get_text(strip=True)
+            if value:
+                log(f"  Found model number: {value}")
+                return value
 
         log("  ⚠ Model number not found")
         return ""

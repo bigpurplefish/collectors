@@ -232,7 +232,24 @@ class CambridgeCollector:
             # Parse page
             data = self.public_parser.parse_page(response.text)
 
-            log("  ✓ Public data collected")
+            # Log what was captured
+            hero = data.get("hero_image", "")
+            gallery = data.get("gallery_images", [])
+            desc = data.get("description", "")
+            specs = data.get("specifications", "")
+            title = data.get("title", "")
+            collection = data.get("collection", "")
+            colors = data.get("colors", [])
+
+            log(f"  ✓ Public data collected:")
+            log(f"    - Title: {title if title else 'NOT FOUND'}")
+            log(f"    - Collection: {collection if collection else 'NOT FOUND'}")
+            log(f"    - Hero image: {'YES' if hero else 'NOT FOUND'}")
+            log(f"    - Gallery images: {len(gallery)} images")
+            log(f"    - Description: {len(desc)} characters" if desc else "    - Description: NOT FOUND")
+            log(f"    - Specifications: {len(specs)} characters" if specs else "    - Specifications: NOT FOUND")
+            log(f"    - Colors: {len(colors)} color options" if colors else "    - Colors: NOT FOUND")
+
             return data
 
         except Exception as e:

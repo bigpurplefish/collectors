@@ -19,19 +19,29 @@ from src.processor import process_products
 
 def setup_logging(log_file: str):
     """
-    Setup logging configuration.
+    Setup logging configuration with dual output (console + file).
 
     Args:
         log_file: Path to log file
     """
     # Ensure log directory exists
     if log_file:
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        log_dir = os.path.dirname(log_file)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+
+    # Create handlers for both console and file
+    handlers = [
+        logging.StreamHandler(sys.stdout)  # Console output
+    ]
+
+    if log_file:
+        handlers.append(logging.FileHandler(log_file))  # File output
 
     logging.basicConfig(
-        filename=log_file if log_file else None,
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s"
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=handlers
     )
 
 
