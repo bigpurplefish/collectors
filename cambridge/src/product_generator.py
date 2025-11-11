@@ -353,14 +353,17 @@ class CambridgeProductGenerator:
                 all_sales_units.add(su)
         has_unit_option = bool(all_sales_units)
 
-        # Phase 1: Add product images from portal (all colors) with variant alt tags
+        # Phase 1: Add product images from portal (all colors) with descriptive alt tags + variant filters
+        portal_img_counter = {}  # Track image count per color for unique descriptions
         for color, portal_data in portal_data_by_color.items():
             gallery_images = portal_data.get("gallery_images", [])
 
-            # Generate variant alt tag for this color
-            sales_unit = portal_data.get("sales_unit", "") if has_unit_option else ""
+            if color not in portal_img_counter:
+                portal_img_counter[color] = 0
 
-            alt_tag = generate_variant_alt_tag(
+            # Generate variant filter for this color
+            sales_unit = portal_data.get("sales_unit", "") if has_unit_option else ""
+            variant_filter = generate_variant_alt_tag(
                 option1=color,
                 option2=sales_unit if has_unit_option else "",
                 option3="",
@@ -371,10 +374,16 @@ class CambridgeProductGenerator:
                 # Clean and verify URL
                 cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
                 if cleaned_url:
+                    portal_img_counter[color] += 1
+                    # Portal alt: "Product Title - Product Image 1 #option1#option2"
+                    portal_alt = f"{product_title} - Product Image {portal_img_counter[color]}"
+                    if variant_filter:
+                        portal_alt = f"{portal_alt} {variant_filter}"
+
                     images.append({
                         "position": position,
                         "src": cleaned_url,
-                        "alt": alt_tag
+                        "alt": portal_alt
                     })
                     position += 1
 
@@ -412,11 +421,13 @@ class CambridgeProductGenerator:
 
             # Add gallery images with descriptive alt tags + variant filters
             gallery_images = public_data.get("gallery_images", [])
+            lifestyle_counter = 0  # Track lifestyle image count for unique descriptions
             for img_url in gallery_images:
                 cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
                 if cleaned_url:
-                    # Gallery alt: "Product Title - Lifestyle #option1#option2"
-                    gallery_alt = generate_lifestyle_alt_tag(product_title, "Lifestyle")
+                    lifestyle_counter += 1
+                    # Gallery alt: "Product Title - Lifestyle 1 #option1#option2"
+                    gallery_alt = generate_lifestyle_alt_tag(product_title, f"Lifestyle {lifestyle_counter}")
                     if variant_filter:
                         gallery_alt = f"{gallery_alt} {variant_filter}"
 

@@ -98,7 +98,7 @@ def main():
 
     # Run processing
     try:
-        process_products(cfg, status=print)
+        process_products(cfg, status_fn=print)
         print()
         print("✓ Processing completed successfully")
         return 0
