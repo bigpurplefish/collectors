@@ -88,18 +88,48 @@ class CambridgePortalSearcher:
         """
         Find product URL by title and color.
 
-        Note: Portal URLs don't include color variants in the path,
-        so we just match on title and assume the product page
-        has a color selector.
+        Portal has color-specific variants in the index (e.g., "Sherwood Ledgestone 3-Pc. Design Kit Onyx Natural").
+        Match on both title and color for better accuracy.
 
         Args:
             title: Product title to search for
-            color: Color variant (not used for portal search)
+            color: Color variant to match
             log: Logging function
 
         Returns:
             Product dictionary or None if not found
         """
-        # Portal URLs are per-product, not per-color
-        # Just match on title
-        return self.find_product_by_title(title, log)
+        if not self.index:
+            log("  ❌ Portal index not loaded")
+            return None
+
+        products = self.index.get("products", [])
+        if not products:
+            log("  ❌ Portal index is empty")
+            return None
+
+        # Normalize color for matching (replace "/" with space, handle variations)
+        normalized_color = color.replace("/", " ").strip()
+
+        # Find best match using fuzzy matching on title + color combined
+        best_match = None
+        best_score = 0.0
+
+        for product in products:
+            product_title = product.get("title", "")
+
+            # Try matching with color included in the search
+            search_text = f"{title} {normalized_color}"
+            score = fuzz.token_sort_ratio(search_text.lower(), product_title.lower())
+
+            if score > best_score:
+                best_score = score
+                best_match = product
+
+        # Check if best match exceeds threshold
+        if best_match and best_score >= self.threshold:
+            log(f"  ✓ Portal product match: '{best_match['title']}' (score: {best_score})")
+            return best_match
+
+        log(f"  ✗ No portal product match found (best score: {best_score})")
+        return None

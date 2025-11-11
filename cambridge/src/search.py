@@ -90,8 +90,9 @@ class CambridgeSearcher:
         for product in products:
             product_title = product.get("title", "")
 
-            # Calculate fuzzy match score
-            score = fuzz.token_sort_ratio(search_title.lower(), product_title.lower())
+            # Calculate fuzzy match score using ratio (better for exact matches than token_sort_ratio)
+            # ratio() is better at preferring exact matches and penalizes extra words
+            score = fuzz.ratio(search_title.lower(), product_title.lower())
 
             if score > best_score:
                 best_score = score
