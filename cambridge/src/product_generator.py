@@ -217,7 +217,14 @@ class CambridgeProductGenerator:
             # Generate SKU (Cambridge products don't have SKUs)
             sku = self.sku_generator.generate_unique_sku()
 
-            # Build variant
+            # Check if sales_unit should be included as option2
+            all_sales_units = set()
+            for pd in portal_data_by_color.values():
+                su = pd.get("sales_unit", "").strip()
+                if su:
+                    all_sales_units.add(su)
+
+            # Build variant with option keys grouped at top for readability
             variant = {
                 "sku": sku,
                 "price": str(price) if price else "0.00",
@@ -239,16 +246,31 @@ class CambridgeProductGenerator:
                 "metafields": []
             }
 
-            # Add option2 if sales_unit exists
-            all_sales_units = set()
-            for pd in portal_data_by_color.values():
-                su = pd.get("sales_unit", "").strip()
-                if su:
-                    all_sales_units.add(su)
-
+            # Add option2 immediately after option1 if sales_unit exists
             if all_sales_units and sales_unit:
-                # Always add option2 when sales_unit is present
-                variant["option2"] = sales_unit
+                # Insert option2 right after option1 for better readability
+                # Need to rebuild variant dict with proper ordering
+                variant = {
+                    "sku": variant["sku"],
+                    "price": variant["price"],
+                    "cost": variant["cost"],
+                    "barcode": variant["barcode"],
+                    "inventory_quantity": variant["inventory_quantity"],
+                    "position": variant["position"],
+                    "option1": variant["option1"],
+                    "option2": sales_unit,  # Add option2 right after option1
+                    "inventory_policy": variant["inventory_policy"],
+                    "compare_at_price": variant["compare_at_price"],
+                    "fulfillment_service": variant["fulfillment_service"],
+                    "inventory_management": variant["inventory_management"],
+                    "taxable": variant["taxable"],
+                    "grams": variant["grams"],
+                    "weight": variant["weight"],
+                    "weight_unit": variant["weight_unit"],
+                    "requires_shipping": variant["requires_shipping"],
+                    "image_id": variant["image_id"],
+                    "metafields": variant["metafields"]
+                }
 
             # Add model number metafield if present
             if model_number:
@@ -306,8 +328,10 @@ class CambridgeProductGenerator:
 
         Order:
         1. Product images from portal (all colors) with variant alt tags
-        2. Hero image from public site with lifestyle alt tag
-        3. Gallery images from public site with lifestyle alt tags
+        2. Hero image from public site with variant alt tag (first color)
+        3. Gallery images from public site with variant alt tags (first color)
+
+        All images receive variant alt tags for Shopify variant filtering.
 
         Args:
             public_data: Public website data
@@ -321,33 +345,27 @@ class CambridgeProductGenerator:
         images = []
         position = 1
 
+        # Determine if we have sales units for option2
+        all_sales_units = set()
+        for pd in portal_data_by_color.values():
+            su = pd.get("sales_unit", "").strip()
+            if su:
+                all_sales_units.add(su)
+        has_unit_option = bool(all_sales_units)
+
         # Phase 1: Add product images from portal (all colors) with variant alt tags
         for color, portal_data in portal_data_by_color.items():
             gallery_images = portal_data.get("gallery_images", [])
 
             # Generate variant alt tag for this color
-            # Find the corresponding variant record to get all option values
-            variant_record = next((r for r in variant_records if r.get("color") == color), None)
+            sales_unit = portal_data.get("sales_unit", "") if has_unit_option else ""
 
-            if variant_record:
-                # Check if sales units are present (for option2)
-                all_sales_units = set()
-                for pd in portal_data_by_color.values():
-                    su = pd.get("sales_unit", "").strip()
-                    if su:
-                        all_sales_units.add(su)
-
-                has_unit_option = bool(all_sales_units)
-                sales_unit = portal_data.get("sales_unit", "") if has_unit_option else ""
-
-                alt_tag = generate_variant_alt_tag(
-                    option1=color,
-                    option2=sales_unit if has_unit_option else "",
-                    option3="",
-                    option4=""
-                )
-            else:
-                alt_tag = generate_variant_alt_tag(option1=color)
+            alt_tag = generate_variant_alt_tag(
+                option1=color,
+                option2=sales_unit if has_unit_option else "",
+                option3="",
+                option4=""
+            )
 
             for img_url in gallery_images:
                 # Clean and verify URL
@@ -360,29 +378,44 @@ class CambridgeProductGenerator:
                     })
                     position += 1
 
-        # Phase 2: Add hero image from public site with lifestyle alt tag
-        hero_image = public_data.get("hero_image", "")
-        if hero_image:
-            cleaned_url = clean_and_verify_image_url(hero_image, timeout=10)
-            if cleaned_url:
-                images.append({
-                    "position": position,
-                    "src": cleaned_url,
-                    "alt": generate_lifestyle_alt_tag(product_title, "Hero")
-                })
-                position += 1
+        # Phase 2 & 3: Add hero and gallery images from public site with variant alt tags
+        # Public images are shared across all variants, so use the first variant's alt tag
+        if variant_records:
+            first_color = variant_records[0].get("color", "")
+            first_portal_data = portal_data_by_color.get(first_color, {})
+            first_sales_unit = first_portal_data.get("sales_unit", "") if has_unit_option else ""
 
-        # Phase 3: Add gallery images from public site with lifestyle alt tags
-        gallery_images = public_data.get("gallery_images", [])
-        for img_url in gallery_images:
-            cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
-            if cleaned_url:
-                images.append({
-                    "position": position,
-                    "src": cleaned_url,
-                    "alt": generate_lifestyle_alt_tag(product_title, "Lifestyle")
-                })
-                position += 1
+            # Generate alt tag for first variant (all public images use this)
+            public_alt_tag = generate_variant_alt_tag(
+                option1=first_color,
+                option2=first_sales_unit if has_unit_option else "",
+                option3="",
+                option4=""
+            )
+
+            # Add hero image with variant alt tag
+            hero_image = public_data.get("hero_image", "")
+            if hero_image:
+                cleaned_url = clean_and_verify_image_url(hero_image, timeout=10)
+                if cleaned_url:
+                    images.append({
+                        "position": position,
+                        "src": cleaned_url,
+                        "alt": public_alt_tag
+                    })
+                    position += 1
+
+            # Add gallery images with variant alt tags
+            gallery_images = public_data.get("gallery_images", [])
+            for img_url in gallery_images:
+                cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
+                if cleaned_url:
+                    images.append({
+                        "position": position,
+                        "src": cleaned_url,
+                        "alt": public_alt_tag
+                    })
+                    position += 1
 
         # Deduplicate while preserving order
         deduplicated = deduplicate_images(images)
