@@ -69,6 +69,9 @@ def deduplicate_images(images: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Remove duplicate images from gallery while preserving order.
 
+    Deduplication is case-insensitive to handle URLs that differ only in case
+    (e.g., "image.JPG" vs "image.jpg").
+
     Args:
         images: List of image dictionaries with 'src' and 'alt' keys
 
@@ -81,8 +84,11 @@ def deduplicate_images(images: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for img in images:
         url = strip_querystring(img.get('src', ''))
 
-        if url and url not in seen_urls:
-            seen_urls.add(url)
+        # Use lowercase URL for comparison to catch case variations
+        url_lower = url.lower()
+
+        if url and url_lower not in seen_urls:
+            seen_urls.add(url_lower)
             # Update image to use cleaned URL
             img_copy = img.copy()
             img_copy['src'] = url
@@ -95,8 +101,8 @@ def generate_variant_alt_tag(option1: str = "", option2: str = "", option3: str 
     """
     Generate Shopify-compatible alt tag for variant images.
 
-    Format: #[option1]#[option2]#[option3]#[option4]
-    Only populated options are included.
+    Format: #option1#option2#option3#option4
+    Only populated options are included, with single # separators.
 
     Args:
         option1: First variant option value (e.g., "Red")
@@ -108,17 +114,17 @@ def generate_variant_alt_tag(option1: str = "", option2: str = "", option3: str 
         Formatted alt tag string
 
     Examples:
-        ("Red", "", "", "") -> "#Red#"
-        ("Red", "Large", "", "") -> "#Red#Large#"
-        ("Blue", "Small", "Wood", "") -> "#Blue#Small#Wood#"
+        ("Red", "", "", "") -> "#Red"
+        ("Red", "Large", "", "") -> "#Red#Large"
+        ("Blue", "Small", "Wood", "") -> "#Blue#Small#Wood"
     """
     alt_parts = []
 
     for option_value in [option1, option2, option3, option4]:
         if option_value:
-            alt_parts.append(f"#{option_value}#")
+            alt_parts.append(option_value)
 
-    return "".join(alt_parts) if alt_parts else ""
+    return "#" + "#".join(alt_parts) if alt_parts else ""
 
 
 def generate_lifestyle_alt_tag(product_title: str, image_type: str = "Lifestyle") -> str:

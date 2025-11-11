@@ -258,6 +258,15 @@ class CambridgeProductGenerator:
                     "type": "single_line_text_field"
                 })
 
+            # Add sales_unit metafield if present
+            if sales_unit:
+                variant["metafields"].append({
+                    "namespace": "custom",
+                    "key": "unit_of_sale",
+                    "value": sales_unit,
+                    "type": "single_line_text_field"
+                })
+
             variants.append(variant)
 
         return variants
