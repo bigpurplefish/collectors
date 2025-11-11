@@ -189,35 +189,74 @@ class CambridgePortalParser:
 
     def _extract_gallery_images(self, soup: BeautifulSoup, log: Callable) -> List[str]:
         """
-        Extract product gallery images.
+        Extract product gallery images using Playwright.
+
+        Only captures images from the product gallery carousel in the order they appear.
 
         Args:
-            soup: BeautifulSoup object
+            soup: BeautifulSoup object (not used, kept for compatibility)
             log: Logging function
 
         Returns:
-            List of image URLs
+            List of image URLs in gallery order
         """
         images = []
 
-        # SuiteCommerce typically has images in a gallery container
-        # Look for common patterns
-        for img in soup.find_all("img"):
-            src = img.get("src", "")
-            alt = img.get("alt", "")
+        if not self._page:
+            log("  ❌ No Playwright page available")
+            return images
 
-            # Skip small images (thumbnails, icons)
-            if "thumb" in src.lower() or "icon" in src.lower():
-                continue
+        try:
+            # Wait for gallery to load (adjust selector as needed for SuiteCommerce)
+            # Common SuiteCommerce gallery selectors:
+            # - .product-detail-images
+            # - .product-views-image-carousel
+            # - .bx-viewport img
+            try:
+                self._page.wait_for_selector("img", timeout=5000)
+            except:
+                log("  ⚠ Gallery images not found")
+                return images
 
-            # Look for product images
-            if src and ("product" in src.lower() or "item" in src.lower()):
-                full_url = self._normalize_url(src)
-                if full_url:
-                    images.append(full_url)
+            # Extract gallery images using Playwright
+            # Try multiple selector patterns for SuiteCommerce galleries
+            gallery_selectors = [
+                ".product-detail-images img",
+                ".product-views-image-carousel img",
+                ".bx-viewport img",
+                ".product-image-gallery img"
+            ]
 
-        log(f"  Found {len(images)} gallery images")
-        return images
+            gallery_images = []
+            for selector in gallery_selectors:
+                elements = self._page.query_selector_all(selector)
+                if elements:
+                    gallery_images = elements
+                    break
+
+            if not gallery_images:
+                # Fallback: get all product images
+                gallery_images = self._page.query_selector_all("img")
+
+            # Extract src attributes in order
+            for img in gallery_images:
+                src = img.get_attribute("src")
+                if src:
+                    # Skip thumbnails, icons, UI elements
+                    if any(skip in src.lower() for skip in ["thumb", "icon", "logo", "button", "sprite"]):
+                        continue
+
+                    # Normalize URL
+                    full_url = self._normalize_url(src)
+                    if full_url and full_url not in images:
+                        images.append(full_url)
+
+            log(f"  Found {len(images)} gallery images")
+            return images
+
+        except Exception as e:
+            log(f"  ⚠ Error extracting gallery images: {e}")
+            return images
 
     def _extract_weight(self, soup: BeautifulSoup, log: Callable) -> str:
         """

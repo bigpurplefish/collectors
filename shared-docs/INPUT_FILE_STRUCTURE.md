@@ -31,7 +31,7 @@ These fields must be present in every input file:
 | `manufacturer_found` | String | Manufacturer name | `"PURINA MILLS"` |
 | `manufacturer_homepage_found` | String | Manufacturer website URL | `"https://www.purinamills.com"` |
 
-### Variant Support Fields (NEW)
+### Variant Support Fields
 
 | Field Name | Data Type | Description | Example |
 |------------|-----------|-------------|---------|
@@ -41,6 +41,8 @@ These fields must be present in every input file:
 | `option_3` | String | Third Shopify option dimension | `"style"` |
 | `option_4` | String | Fourth Shopify option dimension (rarely used) | `null` |
 | `color` | String | Color value when color selection is required in Shopify | `"Red"`, `"Blue"` |
+| `cost` | Float | Variant cost (wholesale/cost price) | `12.50` |
+| `price` | Float | Variant price (retail/selling price) | `24.99` |
 
 **Important - Parent Field**:
 - If `parent` equals `item_#`: This is a **parent product** with variants

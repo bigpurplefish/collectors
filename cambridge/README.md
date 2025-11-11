@@ -21,6 +21,11 @@ The Cambridge collector:
 - ✅ Skip/overwrite processing modes
 - ✅ Record range selection
 - ✅ Thread-safe GUI with real-time status updates
+- ✅ Shopify variant image filtering (alt tag generation)
+- ✅ Image URL cleaning and deduplication
+- ✅ Standard weight fields (value + unit)
+- ✅ Unit of sale as variant option
+- ✅ Cost and price from input file
 
 ---
 
