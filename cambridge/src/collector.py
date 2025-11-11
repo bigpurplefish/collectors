@@ -232,6 +232,21 @@ class CambridgeCollector:
             # Parse page
             data = self.public_parser.parse_page(response.text)
 
+            # Extract ALL gallery images using Playwright (opens lightbox)
+            # This gets all 20 images instead of just the 10 in the HTML
+            log(f"  Extracting gallery images via Playwright lightbox...")
+            gallery_playwright = self.public_parser.extract_gallery_images_with_playwright(
+                product_url,
+                log
+            )
+
+            # Use Playwright images if available, otherwise fall back to HTML parsing
+            if gallery_playwright:
+                data["gallery_images"] = gallery_playwright
+                log(f"  ✓ Extracted {len(gallery_playwright)} images from lightbox")
+            else:
+                log(f"  ⚠ Playwright extraction failed, using HTML parsing ({len(data.get('gallery_images', []))} images)")
+
             # Log what was captured
             hero = data.get("hero_image", "")
             gallery = data.get("gallery_images", [])

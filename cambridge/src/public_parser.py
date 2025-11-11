@@ -3,7 +3,7 @@ Parser for Cambridge public website (www.cambridgepavers.com).
 
 Extracts:
 - Hero image (top of page)
-- Gallery images (carousel)
+- Gallery images (carousel + lightbox via Playwright)
 - Product description
 - Specifications
 """
@@ -11,8 +11,10 @@ Extracts:
 import re
 import sys
 import os
-from typing import Dict, List, Any
+import time
+from typing import Dict, List, Any, Optional, Callable
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright, Browser, Page, TimeoutError as PlaywrightTimeoutError
 
 # Add parent directories to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
@@ -85,6 +87,9 @@ class CambridgePublicParser:
         Extract gallery images from carousel.
 
         Gallery images are in the owl-carousel div below the hero image.
+        Note: This only extracts images visible in the HTML. Use
+        extract_gallery_images_with_playwright() to get all images
+        from the lightbox (recommended).
 
         Args:
             soup: BeautifulSoup object
@@ -107,6 +112,106 @@ class CambridgePublicParser:
                 url = self._normalize_image_url(src)
                 if url:
                     gallery_urls.append(url)
+
+        return gallery_urls
+
+    def extract_gallery_images_with_playwright(
+        self,
+        product_url: str,
+        log: Callable = print
+    ) -> List[str]:
+        """
+        Extract ALL gallery images by opening the lightbox with Playwright.
+
+        Cambridge's website only includes ~10 images in the initial HTML,
+        but loads up to 20 images dynamically in the lightbox. This method
+        clicks through the lightbox to extract all image URLs.
+
+        Args:
+            product_url: Full product URL to visit
+            log: Logging function
+
+        Returns:
+            List of all gallery image URLs from lightbox
+        """
+        gallery_urls = []
+
+        try:
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=True)
+                page = browser.new_page()
+
+                # Navigate to product page
+                log(f"    Navigating to {product_url}")
+                page.goto(product_url, wait_until="networkidle", timeout=30000)
+                time.sleep(2)
+
+                # Find and click the first gallery image to open lightbox
+                try:
+                    first_image = page.locator("a.popup-img").first
+                    image_count = first_image.count()
+                    log(f"    Found {image_count} popup-img links")
+
+                    if image_count > 0:
+                        log(f"    Clicking first image to open lightbox...")
+                        # Use JavaScript click since element might be outside viewport
+                        page.evaluate("document.querySelector('a.popup-img').click()")
+                        time.sleep(1)
+
+                        # Wait for lightbox to appear
+                        log(f"    Waiting for lightbox...")
+                        page.wait_for_selector(".mfp-img", timeout=5000)
+
+                        # Extract total image count from counter
+                        counter = page.locator(".mfp-counter").text_content()
+                        log(f"    Lightbox counter: {counter}")
+
+                        # Counter format: "1 of 20"
+                        if " of " in counter:
+                            total_images = int(counter.split(" of ")[1])
+                        else:
+                            total_images = 10  # Fallback
+
+                        log(f"    Extracting {total_images} images from lightbox...")
+
+                        # Collect all image URLs by clicking through lightbox
+                        for i in range(total_images):
+                            # Get current image URL
+                            img_element = page.locator(".mfp-img")
+                            if img_element.count() > 0:
+                                src = img_element.get_attribute("src")
+                                if src:
+                                    url = self._normalize_image_url(src)
+                                    # Don't skip duplicates - track all positions
+                                    gallery_urls.append(url)
+                                    log(f"      Position {i+1}: {url}")
+
+                            # Click next arrow (if not last image)
+                            if i < total_images - 1:
+                                next_button = page.locator(".mfp-arrow-right")
+                                if next_button.count() > 0:
+                                    next_button.click()
+                                    time.sleep(0.5)
+
+                        # Deduplicate while preserving order
+                        original_count = len(gallery_urls)
+                        gallery_urls = list(dict.fromkeys(gallery_urls))  # Remove duplicates, preserve order
+                        if original_count > len(gallery_urls):
+                            log(f"    Removed {original_count - len(gallery_urls)} duplicates")
+                    else:
+                        log(f"    No popup-img links found, skipping lightbox extraction")
+
+                except PlaywrightTimeoutError as e:
+                    # Lightbox didn't open, fall back to HTML parsing
+                    log(f"    Lightbox timeout: {e}")
+
+                browser.close()
+
+        except Exception as e:
+            # If Playwright fails, return empty list (caller will fall back to HTML parsing)
+            log(f"    Playwright gallery extraction error: {e}")
+            import traceback
+            log(traceback.format_exc())
 
         return gallery_urls
 
