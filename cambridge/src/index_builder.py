@@ -7,9 +7,21 @@ Index is cached to avoid repeated crawling.
 
 import json
 import os
+import sys
 from datetime import datetime
 from typing import Dict, List, Any, Callable
 from bs4 import BeautifulSoup
+
+# Add parent directories to path for shared imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+from shared.utils.logging_utils import (
+    log_section_header,
+    log_success,
+    log_error,
+    log_warning,
+    log_and_status
+)
 
 
 # Category pages to crawl
@@ -69,22 +81,28 @@ class CambridgeIndexBuilder:
         Returns:
             Index dictionary with products array and metadata
         """
-        log("=" * 80)
-        log("BUILDING CAMBRIDGE PRODUCT INDEX")
-        log("=" * 80)
+        log_section_header(log, "BUILDING CAMBRIDGE PRODUCT INDEX")
 
         products = []
         seen_prodids = set()
 
         # Crawl each category page
         for category_url in CATEGORY_URLS:
-            log(f"\nCrawling category: {category_url}")
+            log_and_status(
+                log,
+                f"Crawling category: {category_url}",
+                ui_msg=f"Crawling: {category_url}"
+            )
             full_url = f"{self.origin}{category_url}"
 
             try:
                 response = http_get(full_url, timeout=timeout)
                 if response.status_code != 200:
-                    log(f"  ⚠ Failed to fetch {category_url}: HTTP {response.status_code}")
+                    log_warning(
+                        log,
+                        f"Failed to fetch {category_url}",
+                        details=f"HTTP {response.status_code}"
+                    )
                     continue
 
                 # Parse category page for product links
@@ -97,10 +115,19 @@ class CambridgeIndexBuilder:
                     if prodid not in seen_prodids:
                         products.append(product)
                         seen_prodids.add(prodid)
-                        log(f"  ✓ Found: {product['title']} (prodid={prodid})")
+                        log_and_status(
+                            log,
+                            f"Found product: {product['title']} (prodid={prodid})",
+                            ui_msg=f"Found: {product['title']}"
+                        )
 
             except Exception as e:
-                log(f"  ❌ Error crawling {category_url}: {e}")
+                log_error(
+                    log,
+                    f"Error crawling {category_url}",
+                    details=str(e),
+                    exc=e
+                )
                 continue
 
         # Build index structure
@@ -110,10 +137,7 @@ class CambridgeIndexBuilder:
             "products": products
         }
 
-        log("")
-        log("=" * 80)
-        log(f"INDEX BUILD COMPLETE: {len(products)} products found")
-        log("=" * 80)
+        log_section_header(log, f"INDEX BUILD COMPLETE: {len(products)} products found")
 
         return index
 
@@ -237,9 +261,18 @@ def save_index_to_cache(index: Dict[str, Any], cache_file: str, log: Callable = 
         with open(cache_file, "w", encoding="utf-8") as f:
             json.dump(index, f, indent=2, ensure_ascii=False)
 
-        log(f"\n✓ Index saved to cache: {cache_file}")
+        log_success(
+            log,
+            f"Index saved to cache: {cache_file}",
+            details=f"Saved {index.get('total_products', 0)} products to {cache_file}"
+        )
     except Exception as e:
-        log(f"\n❌ Failed to save index to cache: {e}")
+        log_error(
+            log,
+            "Failed to save index to cache",
+            details=f"Cache file: {cache_file}",
+            exc=e
+        )
         raise
 
 
@@ -255,20 +288,31 @@ def load_index_from_cache(cache_file: str, log: Callable = print) -> Dict[str, A
         Index dictionary or None if cache doesn't exist
     """
     if not os.path.exists(cache_file):
-        log(f"Cache file not found: {cache_file}")
+        log_and_status(
+            log,
+            f"Cache file not found: {cache_file}",
+            ui_msg="Cache not found"
+        )
         return None
 
     try:
         with open(cache_file, "r", encoding="utf-8") as f:
             index = json.load(f)
 
-        log(f"✓ Loaded index from cache: {cache_file}")
-        log(f"  Last updated: {index.get('last_updated', 'Unknown')}")
-        log(f"  Total products: {index.get('total_products', 0)}")
+        log_success(
+            log,
+            f"Loaded index from cache: {cache_file}",
+            details=f"Last updated: {index.get('last_updated', 'Unknown')}, Total products: {index.get('total_products', 0)}"
+        )
 
         return index
     except Exception as e:
-        log(f"❌ Failed to load index from cache: {e}")
+        log_error(
+            log,
+            "Failed to load index from cache",
+            details=f"Cache file: {cache_file}",
+            exc=e
+        )
         return None
 
 

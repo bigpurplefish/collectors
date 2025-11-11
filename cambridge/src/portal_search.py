@@ -4,8 +4,15 @@ Portal Product Search for Cambridge Dealer Portal
 Searches the portal product index using fuzzy matching to find products.
 """
 
+import sys
+import os
 from typing import Dict, List, Any, Optional, Callable
 from rapidfuzz import fuzz
+
+# Add parent directories to path for shared imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+from shared.utils.logging_utils import log_success, log_error, log_and_status
 
 
 class CambridgePortalSearcher:
@@ -31,7 +38,12 @@ class CambridgePortalSearcher:
             log: Logging function
         """
         self.index = index
-        log(f"Loaded portal product index: {index.get('total_products', 0)} products")
+        total_products = index.get('total_products', 0)
+        log_success(
+            log,
+            f"Loaded portal product index: {total_products} products",
+            details=f"Portal index contains {total_products} authenticated products with SKUs, prices, and stock"
+        )
 
     def find_product_by_title(
         self,
@@ -49,12 +61,12 @@ class CambridgePortalSearcher:
             Product dictionary or None if not found
         """
         if not self.index:
-            log("  ❌ Portal index not loaded")
+            log_error(log, "Portal index not loaded", details="Portal index must be loaded before searching")
             return None
 
         products = self.index.get("products", [])
         if not products:
-            log("  ❌ Portal index is empty")
+            log_error(log, "Portal index is empty", details="No portal products available for matching")
             return None
 
         # Find best match using fuzzy matching
@@ -73,10 +85,18 @@ class CambridgePortalSearcher:
 
         # Check if best match exceeds threshold
         if best_match and best_score >= self.threshold:
-            log(f"  ✓ Portal product match: '{best_match['title']}' (score: {best_score})")
+            log_success(
+                log,
+                f"Portal product match: '{best_match['title']}'",
+                details=f"Match score: {best_score}, threshold: {self.threshold}"
+            )
             return best_match
 
-        log(f"  ✗ No portal product match found (best score: {best_score})")
+        log_and_status(
+            log,
+            f"No portal product match found (best score: {best_score}, threshold: {self.threshold})",
+            ui_msg=f"No portal match (score: {best_score})"
+        )
         return None
 
     def find_product_by_title_and_color(
@@ -100,12 +120,12 @@ class CambridgePortalSearcher:
             Product dictionary or None if not found
         """
         if not self.index:
-            log("  ❌ Portal index not loaded")
+            log_error(log, "Portal index not loaded", details="Portal index must be loaded before searching")
             return None
 
         products = self.index.get("products", [])
         if not products:
-            log("  ❌ Portal index is empty")
+            log_error(log, "Portal index is empty", details="No portal products available for matching")
             return None
 
         # Normalize color for matching (replace "/" with space, handle variations)
@@ -128,8 +148,16 @@ class CambridgePortalSearcher:
 
         # Check if best match exceeds threshold
         if best_match and best_score >= self.threshold:
-            log(f"  ✓ Portal product match: '{best_match['title']}' (score: {best_score})")
+            log_success(
+                log,
+                f"Portal product match: '{best_match['title']}'",
+                details=f"Matched '{title}' + '{color}' with score: {best_score}, threshold: {self.threshold}"
+            )
             return best_match
 
-        log(f"  ✗ No portal product match found (best score: {best_score})")
+        log_and_status(
+            log,
+            f"No portal product match found for '{title}' + '{color}' (best score: {best_score}, threshold: {self.threshold})",
+            ui_msg=f"No portal match (score: {best_score})"
+        )
         return None

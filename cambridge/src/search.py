@@ -5,8 +5,15 @@ Matches input products against cached product index using fuzzy matching.
 """
 
 import re
+import sys
+import os
 from typing import Dict, List, Any, Callable, Set, Optional
 from rapidfuzz import fuzz
+
+# Add parent directories to path for shared imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+from shared.utils.logging_utils import log_success, log_error, log_and_status
 
 
 class CambridgeSearcher:
@@ -41,7 +48,11 @@ class CambridgeSearcher:
         """
         self.index = index
         total_products = len(index.get("products", []))
-        log(f"✓ Loaded product index: {total_products} products")
+        log_success(
+            log,
+            f"Loaded product index: {total_products} products",
+            details=f"Index contains {total_products} products from public website"
+        )
 
     def find_product_by_title_and_color(
         self,
@@ -63,12 +74,12 @@ class CambridgeSearcher:
             Product dictionary from index or None if not found
         """
         if not self.index:
-            log("❌ Product index not loaded")
+            log_error(log, "Product index not loaded", details="Index must be loaded before searching")
             return None
 
         products = self.index.get("products", [])
         if not products:
-            log("❌ Product index is empty")
+            log_error(log, "Product index is empty", details="No products available for matching")
             return None
 
         # Strip color family prefix from title for public index search
@@ -78,10 +89,18 @@ class CambridgeSearcher:
         for family in color_families:
             if title.startswith(family + " "):
                 search_title = title[len(family) + 1:]  # Remove "Family " prefix
-                log(f"Stripped color family '{family}' from title")
+                log_and_status(
+                    log,
+                    f"Stripped color family '{family}' from search title: '{search_title}'",
+                    ui_msg=f"Searching for: {search_title}"
+                )
                 break
 
-        log(f"Searching for: title='{search_title}' (original: '{title}'), color='{color}'")
+        log_and_status(
+            log,
+            f"Searching for: title='{search_title}' (original: '{title}'), color='{color}'",
+            ui_msg=f"Searching: {search_title}, {color}"
+        )
 
         # Phase 1: Fuzzy match on title (using search_title without color family prefix)
         best_match = None
@@ -99,10 +118,18 @@ class CambridgeSearcher:
                 best_match = product
 
         if not best_match or best_score < self.fuzzy_match_threshold:
-            log(f"  ✗ No title match found (best score: {best_score})")
+            log_and_status(
+                log,
+                f"No title match found (best score: {best_score}, threshold: {self.fuzzy_match_threshold})",
+                ui_msg=f"No match found (score: {best_score})"
+            )
             return None
 
-        log(f"  ✓ Title match: '{best_match.get('title')}' (score: {best_score})")
+        log_success(
+            log,
+            f"Title match found: '{best_match.get('title')}'",
+            details=f"Match score: {best_score}, threshold: {self.fuzzy_match_threshold}"
+        )
 
         # Phase 2: Check if product has requested color
         # Note: The index may not include color information
