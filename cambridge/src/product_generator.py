@@ -168,8 +168,8 @@ class CambridgeProductGenerator:
             if sales_unit and sales_unit not in sales_units:
                 sales_units.append(sales_unit)
 
-        if sales_units and len(sales_units) > 1:
-            # Only add as option if there are multiple distinct values
+        if sales_units:
+            # Always add as option when present, even if only one value
             options.append({
                 "name": "Unit of Sale",
                 "position": 2,
@@ -239,14 +239,15 @@ class CambridgeProductGenerator:
                 "metafields": []
             }
 
-            # Add option2 if sales_unit exists and there are multiple distinct values
+            # Add option2 if sales_unit exists
             all_sales_units = set()
             for pd in portal_data_by_color.values():
                 su = pd.get("sales_unit", "").strip()
                 if su:
                     all_sales_units.add(su)
 
-            if len(all_sales_units) > 1:
+            if all_sales_units and sales_unit:
+                # Always add option2 when sales_unit is present
                 variant["option2"] = sales_unit
 
             # Add model number metafield if present
@@ -329,14 +330,14 @@ class CambridgeProductGenerator:
             variant_record = next((r for r in variant_records if r.get("color") == color), None)
 
             if variant_record:
-                # Check if there are multiple sales units (for option2)
+                # Check if sales units are present (for option2)
                 all_sales_units = set()
                 for pd in portal_data_by_color.values():
                     su = pd.get("sales_unit", "").strip()
                     if su:
                         all_sales_units.add(su)
 
-                has_unit_option = len(all_sales_units) > 1
+                has_unit_option = bool(all_sales_units)
                 sales_unit = portal_data.get("sales_unit", "") if has_unit_option else ""
 
                 alt_tag = generate_variant_alt_tag(
