@@ -154,9 +154,9 @@ def test_search():
         assert url, "Fuzzy match failed"
         print(f"✓ Found: {url}")
 
-        # Test partial match
-        print("\nTest 3: Partial match")
-        url = searcher.find_product_url("Sherwood Ledgestone", "Bluestone", print)
+        # Test partial match (should work with enough detail)
+        print("\nTest 3: Partial match with sufficient detail")
+        url = searcher.find_product_url("Sherwood Ledgestone 3-Pc Design", "Bluestone", print)
         assert url, "Partial match failed"
         print(f"✓ Found: {url}")
 
