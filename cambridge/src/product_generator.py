@@ -114,19 +114,36 @@ class CambridgeProductGenerator:
         """
         Generate HTML description from public data.
 
+        Appends specifications as a bulleted list if available.
+
         Args:
             public_data: Public website data
 
         Returns:
             HTML description string
         """
+        html_parts = []
+
+        # Main description
         description = public_data.get("description", "")
+        if description:
+            html_parts.append(f"<p>{description}</p>")
 
-        if not description:
-            return ""
+        # Specifications section
+        specifications = public_data.get("specifications", "")
+        if specifications:
+            # Split specifications into lines
+            spec_lines = [line.strip() for line in specifications.split('\n') if line.strip()]
 
-        # Wrap in paragraph tags
-        return f"<p>{description}</p>"
+            if spec_lines:
+                # Add heading and bulleted list
+                html_parts.append("<h3>Specifications</h3>")
+                html_parts.append("<ul>")
+                for line in spec_lines:
+                    html_parts.append(f"<li>{line}</li>")
+                html_parts.append("</ul>")
+
+        return "".join(html_parts)
 
     def _generate_options(
         self,
@@ -451,6 +468,8 @@ class CambridgeProductGenerator:
         """
         Generate product metafields from public data.
 
+        Note: Specifications are now included in descriptionHTML instead of metafields.
+
         Args:
             public_data: Public website data
 
@@ -459,14 +478,7 @@ class CambridgeProductGenerator:
         """
         metafields = []
 
-        # Specifications metafield
-        specifications = public_data.get("specifications", "")
-        if specifications:
-            metafields.append({
-                "namespace": "custom",
-                "key": "specifications",
-                "value": f"<p>{specifications}</p>",
-                "type": "rich_text_field"
-            })
+        # No metafields currently needed for Cambridge products
+        # (Specifications moved to descriptionHTML)
 
         return metafields
