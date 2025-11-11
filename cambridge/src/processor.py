@@ -10,30 +10,53 @@ Main workflow that:
    - Collects dealer portal data for each color
 4. Generates Shopify products
 5. Saves to output file
+
+Implements dual logging pattern from GUI_DESIGN_REQUIREMENTS.md:
+- User-friendly messages to status callback (GUI)
+- Detailed technical logs to console and file
 """
 
 import json
 import os
+import sys
+import logging
 import pandas as pd
-from typing import Dict, List, Any, Callable
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Callable
+
+# Add shared utils to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
+from utils.logging_utils import (
+    log_and_status,
+    log_section_header,
+    log_progress,
+    log_success,
+    log_warning,
+    log_error,
+    log_summary
+)
 
 from src.collector import CambridgeCollector
 from src.product_generator import CambridgeProductGenerator
 
 
-def load_input_file(input_file: str, log: Callable = print) -> List[Dict[str, Any]]:
+def load_input_file(input_file: str, status_fn: Optional[Callable] = None) -> List[Dict[str, Any]]:
     """
     Load input Excel file.
 
     Args:
         input_file: Path to Excel file
-        log: Logging function
+        status_fn: Status callback function
 
     Returns:
         List of product records
     """
     try:
-        log(f"Loading input file: {input_file}")
+        log_and_status(
+            status_fn,
+            msg=f"Loading input file: {input_file} (Excel format)",
+            ui_msg=f"Loading input file..."
+        )
 
         # Read Excel file
         df = pd.read_excel(input_file)
@@ -41,28 +64,44 @@ def load_input_file(input_file: str, log: Callable = print) -> List[Dict[str, An
         # Convert to list of dictionaries
         records = df.to_dict(orient="records")
 
-        log(f"  ✓ Loaded {len(records)} records")
+        log_success(
+            status_fn,
+            msg=f"Loaded {len(records)} records from input file",
+            details=f"File: {input_file}, Format: Excel (.xlsx), Records: {len(records)}"
+        )
+
         return records
 
     except Exception as e:
-        log(f"  ❌ Failed to load input file: {e}")
+        log_error(
+            status_fn,
+            msg="Failed to load input file",
+            details=f"File: {input_file}",
+            exc=e
+        )
         raise
 
 
-def save_output_file(products: List[Dict[str, Any]], output_file: str, log: Callable = print):
+def save_output_file(products: List[Dict[str, Any]], output_file: str, status_fn: Optional[Callable] = None):
     """
     Save products to output JSON file.
 
     Args:
         products: List of Shopify product dictionaries
         output_file: Path to output file
-        log: Logging function
+        status_fn: Status callback function
     """
     try:
-        log(f"\nSaving output to: {output_file}")
+        log_and_status(
+            status_fn,
+            msg=f"Saving output to: {output_file} (JSON format, {len(products)} products)",
+            ui_msg="Saving output..."
+        )
 
         # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        output_dir = os.path.dirname(output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
         # Save products
         output = {"products": products}
@@ -70,26 +109,36 @@ def save_output_file(products: List[Dict[str, Any]], output_file: str, log: Call
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(output, f, indent=2, ensure_ascii=False)
 
-        log(f"  ✓ Saved {len(products)} products")
+        # Calculate file size
+        file_size_bytes = os.path.getsize(output_file)
+        file_size_kb = file_size_bytes / 1024
+
+        log_success(
+            status_fn,
+            msg=f"Saved {len(products)} products to output file",
+            details=f"File: {output_file}, Products: {len(products)}, Size: {file_size_kb:.2f} KB"
+        )
 
     except Exception as e:
-        log(f"  ❌ Failed to save output file: {e}")
+        log_error(
+            status_fn,
+            msg="Failed to save output file",
+            details=f"File: {output_file}",
+            exc=e
+        )
         raise
 
 
-def process_products(config: Dict[str, Any], status: Callable = print):
+def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = None):
     """
     Main processing workflow.
 
     Args:
         config: Configuration dictionary
-        status: Status logging function
+        status_fn: Status callback function
     """
-    status("")
-    status("=" * 80)
-    status("CAMBRIDGE PRODUCT COLLECTOR")
-    status("=" * 80)
-    status("")
+    log_section_header(status_fn, "CAMBRIDGE PRODUCT COLLECTOR")
+    log_and_status(status_fn, "", ui_msg="")
 
     # Extract configuration
     input_file = config.get("input_file", "")
@@ -101,34 +150,54 @@ def process_products(config: Dict[str, Any], status: Callable = print):
 
     # Validate inputs
     if not input_file or not os.path.exists(input_file):
-        status("❌ Input file not found or not specified")
+        log_error(
+            status_fn,
+            msg="Input file not found or not specified",
+            details=f"Input file path: {input_file}"
+        )
         return
 
     if not output_file:
-        status("❌ Output file not specified")
+        log_error(
+            status_fn,
+            msg="Output file not specified",
+            details="Output file path is empty in configuration"
+        )
         return
 
     # Initialize collector
-    status("Initializing collector...")
+    log_and_status(
+        status_fn,
+        msg=f"Initializing Cambridge collector (processing_mode={processing_mode}, start={start_record or 'beginning'}, end={end_record or 'end'})",
+        ui_msg="Initializing collector..."
+    )
     collector = CambridgeCollector(config)
     generator = CambridgeProductGenerator(config)
 
     try:
         # Ensure product index is loaded (public site)
-        status("")
-        if not collector.ensure_index_loaded(force_rebuild=force_rebuild_index, log=status):
-            status("❌ Failed to load product index")
+        log_and_status(status_fn, "", ui_msg="")
+        if not collector.ensure_index_loaded(force_rebuild=force_rebuild_index, log=status_fn):
+            log_error(
+                status_fn,
+                msg="Failed to load public product index",
+                details=f"Force rebuild: {force_rebuild_index}"
+            )
             return
 
         # Ensure portal product index is loaded
-        status("")
-        if not collector.ensure_portal_index_loaded(force_rebuild=force_rebuild_index, log=status):
-            status("❌ Failed to load portal product index")
+        log_and_status(status_fn, "", ui_msg="")
+        if not collector.ensure_portal_index_loaded(force_rebuild=force_rebuild_index, log=status_fn):
+            log_error(
+                status_fn,
+                msg="Failed to load portal product index",
+                details=f"Force rebuild: {force_rebuild_index}"
+            )
             return
 
         # Load input file
-        status("")
-        records = load_input_file(input_file, status)
+        log_and_status(status_fn, "", ui_msg="")
+        records = load_input_file(input_file, status_fn)
 
         # Apply record range filtering
         start_idx = 0
@@ -149,12 +218,21 @@ def process_products(config: Dict[str, Any], status: Callable = print):
                 end_idx = None
 
         records = records[start_idx:end_idx]
-        status(f"\nProcessing {len(records)} records (from record #{start_idx + 1})")
+
+        log_and_status(
+            status_fn,
+            msg=f"Processing {len(records)} records (from record #{start_idx + 1}, mode={processing_mode})",
+            ui_msg=f"Processing {len(records)} records (from record #{start_idx + 1})"
+        )
 
         # Group records by title
-        status("")
-        status("Grouping records by title (variant families)...")
-        product_families = generator.group_by_title(records, status)
+        log_and_status(status_fn, "", ui_msg="")
+        log_and_status(
+            status_fn,
+            msg=f"Grouping {len(records)} records by title to create variant families",
+            ui_msg="Grouping records by title (variant families)..."
+        )
+        product_families = generator.group_by_title(records, status_fn)
 
         # Load existing output if in skip mode
         existing_products = {}
@@ -165,9 +243,17 @@ def process_products(config: Dict[str, Any], status: Callable = print):
                     existing_products = {
                         p["title"]: p for p in existing_data.get("products", [])
                     }
-                status(f"Loaded {len(existing_products)} existing products (skip mode)")
+                log_and_status(
+                    status_fn,
+                    msg=f"Loaded {len(existing_products)} existing products from {output_file} (skip mode enabled)",
+                    ui_msg=f"Loaded {len(existing_products)} existing products (skip mode)"
+                )
             except Exception as e:
-                status(f"⚠ Failed to load existing output: {e}")
+                log_warning(
+                    status_fn,
+                    msg="Failed to load existing output",
+                    details=f"File: {output_file}, Error: {str(e)}"
+                )
 
         # Process each product family
         products = []
@@ -175,19 +261,31 @@ def process_products(config: Dict[str, Any], status: Callable = print):
         skip_count = 0
         fail_count = 0
 
-        status("")
-        status("=" * 80)
-        status("PROCESSING PRODUCTS")
-        status("=" * 80)
+        log_and_status(status_fn, "", ui_msg="")
+        log_section_header(status_fn, "PROCESSING PRODUCTS")
 
         for i, (title, variant_records) in enumerate(product_families.items(), 1):
-            status("")
-            status(f"[{i}/{len(product_families)}] Processing: {title}")
-            status(f"  Variants: {len(variant_records)} colors")
+            log_and_status(status_fn, "", ui_msg="")
+
+            colors_str = ", ".join([v.get("color", "") for v in variant_records[:3]])
+            if len(variant_records) > 3:
+                colors_str += f" +{len(variant_records) - 3} more"
+
+            log_progress(
+                status_fn,
+                current=i,
+                total=len(product_families),
+                item_name=title,
+                details=f"Variants={len(variant_records)}, Colors=[{colors_str}]"
+            )
 
             # Skip if already processed
             if processing_mode == "skip" and title in existing_products:
-                status(f"  ⏭ Skipping (already processed)")
+                log_and_status(
+                    status_fn,
+                    msg=f"[{i}/{len(product_families)}] Skipping: {title} (already processed, skip mode enabled)",
+                    ui_msg="  ⏭ Skipping (already processed)"
+                )
                 products.append(existing_products[title])
                 skip_count += 1
                 continue
@@ -197,18 +295,26 @@ def process_products(config: Dict[str, Any], status: Callable = print):
                 first_variant = variant_records[0]
                 first_color = first_variant.get("color", "")
 
-                product_url = collector.find_product_url(title, first_color, status)
+                product_url = collector.find_product_url(title, first_color, status_fn)
 
                 if not product_url:
-                    status(f"  ❌ Product URL not found")
+                    log_error(
+                        status_fn,
+                        msg="Product URL not found",
+                        details=f"Title: {title}, Color: {first_color}"
+                    )
                     fail_count += 1
                     continue
 
                 # Collect public website data
-                public_data = collector.collect_public_data(product_url, status)
+                public_data = collector.collect_public_data(product_url, status_fn)
 
                 if not public_data:
-                    status(f"  ❌ Failed to collect public data")
+                    log_error(
+                        status_fn,
+                        msg="Failed to collect public data",
+                        details=f"Title: {title}, URL: {product_url}"
+                    )
                     fail_count += 1
                     continue
 
@@ -220,10 +326,14 @@ def process_products(config: Dict[str, Any], status: Callable = print):
                     if not color:
                         continue
 
-                    status(f"  Collecting portal data for color: {color}")
+                    log_and_status(
+                        status_fn,
+                        msg=f"  Collecting portal data for color: {color} (product: {title})",
+                        ui_msg=f"  Collecting portal data for color: {color}"
+                    )
 
                     # Search portal for product using title and color
-                    portal_data = collector.collect_portal_data(title, color, status)
+                    portal_data = collector.collect_portal_data(title, color, status_fn)
 
                     if portal_data:
                         portal_data_by_color[color] = portal_data
@@ -234,42 +344,53 @@ def process_products(config: Dict[str, Any], status: Callable = print):
                     variant_records=variant_records,
                     public_data=public_data,
                     portal_data_by_color=portal_data_by_color,
-                    log=status
+                    log=status_fn
                 )
 
                 products.append(product)
                 success_count += 1
 
-                status(f"  ✓ Product generated successfully")
-                status(f"    - Variants: {len(product['variants'])}")
-                status(f"    - Images: {len(product['images'])}")
+                log_success(
+                    status_fn,
+                    msg="Product generated successfully",
+                    details=f"Title: {title}, Variants: {len(product['variants'])}, Images: {len(product['images'])}"
+                )
 
             except Exception as e:
-                status(f"  ❌ Error processing product: {e}")
+                log_error(
+                    status_fn,
+                    msg="Error processing product",
+                    details=f"Title: {title}",
+                    exc=e
+                )
                 fail_count += 1
                 continue
 
         # Save output
-        status("")
-        status("=" * 80)
-        status("SAVING OUTPUT")
-        status("=" * 80)
+        log_and_status(status_fn, "", ui_msg="")
+        log_section_header(status_fn, "SAVING OUTPUT")
 
-        save_output_file(products, output_file, status)
+        save_output_file(products, output_file, status_fn)
 
         # Summary
-        status("")
-        status("=" * 80)
-        status("PROCESSING COMPLETE")
-        status("=" * 80)
-        status(f"✅ Successful: {success_count}")
-        status(f"⏭ Skipped: {skip_count}")
-        status(f"❌ Failed: {fail_count}")
-        status(f"Total: {len(product_families)} product families")
-        status("=" * 80)
+        log_summary(
+            status_fn,
+            title="PROCESSING COMPLETE",
+            stats={
+                "✅ Successful": success_count,
+                "⏭ Skipped": skip_count,
+                "❌ Failed": fail_count,
+                "Total": len(product_families)
+            }
+        )
 
     except Exception as e:
-        status(f"\n❌ Fatal error: {e}")
+        log_error(
+            status_fn,
+            msg="Fatal error during processing",
+            details="Main processing workflow encountered unrecoverable error",
+            exc=e
+        )
         raise
 
     finally:

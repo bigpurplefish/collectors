@@ -8,11 +8,13 @@ Handles:
 - Metafields creation
 - SKU generation for products without SKUs
 - Weight/unit_of_sale as standard fields and variant options
+
+Implements dual logging pattern from LOGGING_REQUIREMENTS.md.
 """
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Callable
+from typing import Dict, List, Any, Optional, Callable
 from collections import defaultdict
 
 # Add parent collectors directory to path for shared imports
@@ -25,6 +27,7 @@ from utils.image_utils import (
     generate_lifestyle_alt_tag,
     clean_and_verify_image_url
 )
+from utils.logging_utils import log_and_status
 
 
 class CambridgeProductGenerator:
@@ -43,7 +46,7 @@ class CambridgeProductGenerator:
     def group_by_title(
         self,
         records: List[Dict[str, Any]],
-        log: Callable = print
+        status_fn: Optional[Callable] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Group input records by title.
@@ -52,7 +55,7 @@ class CambridgeProductGenerator:
 
         Args:
             records: List of input records
-            log: Logging function
+            status_fn: Status callback function
 
         Returns:
             Dictionary mapping title -> list of variant records
@@ -64,7 +67,11 @@ class CambridgeProductGenerator:
             if title:
                 grouped[title].append(record)
 
-        log(f"Grouped {len(records)} records into {len(grouped)} product families")
+        log_and_status(
+            status_fn,
+            msg=f"Grouped {len(records)} records into {len(grouped)} product families (variant grouping by title)",
+            ui_msg=f"Grouped {len(records)} records into {len(grouped)} product families"
+        )
 
         return dict(grouped)
 
