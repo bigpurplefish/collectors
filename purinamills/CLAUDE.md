@@ -6,180 +6,106 @@ This is the **reference implementation** for the collectors architecture. It dem
 
 ---
 
-## Python Development Standards
+## AI Assistant Guidelines
 
-### ⚠️ CRITICAL: ALWAYS Follow Complete Workflow ⚠️
+### ⚠️ CRITICAL: ALWAYS Follow Shared-Docs Requirements ⚠️
 
-**MANDATORY:** Follow ALL guidelines in `/Users/moosemarketer/Code/shared-docs/python/` for all code changes.
+**MANDATORY:** ALL code changes MUST follow the complete requirements in `/Users/moosemarketer/Code/shared-docs/python/`
 
-**This is NOT optional. Failure to follow these steps will result in incomplete work.**
+**This is NOT optional.** The shared-docs contain the authoritative standards for:
+- Project structure
+- Git workflow
+- Code quality
+- Testing requirements
+- Documentation standards
 
-### Required Development Workflow
+### Required Reading Before ANY Code Changes
 
-**Every code change MUST follow this complete workflow:**
+**Read these documents FIRST:**
+1. **`COMPLIANCE_CHECKLIST.md`** - Project structure verification
+2. **`PROJECT_STRUCTURE_REQUIREMENTS.md`** - Complete project specifications
+3. **`GIT_WORKFLOW.md`** - Git commit and branching standards
+4. **`GRAPHQL_OUTPUT_REQUIREMENTS.md`** - Shopify API format
+5. **`GUI_DESIGN_REQUIREMENTS.md`** - Thread-safe GUI patterns
+6. **`TECHNICAL_DOCS.md`** - Technical documentation standards
 
-#### 1. Pre-Coding Phase
+### Development Workflow Quick Reference
 
-**Before writing ANY code OR answering questions about code:**
+**This is a quick reference only. See shared-docs for complete details.**
 
-a. **ALWAYS Use Context7 for Library Documentation**
+1. **Pre-Coding:**
+   - Use Context7 for current library documentation
+   - Read relevant shared-docs requirements
+   - Understand existing code architecture
 
-   **CRITICAL:** Before writing code involving external libraries, APIs, or frameworks, you MUST use Context7 to fetch the latest documentation.
+2. **Coding:**
+   - Follow PROJECT_STRUCTURE_REQUIREMENTS.md
+   - Follow GUI_DESIGN_REQUIREMENTS.md (if GUI changes)
+   - Follow GRAPHQL_OUTPUT_REQUIREMENTS.md (if output changes)
 
-   **Why:** Documentation changes frequently. Context7 provides up-to-date information from official sources, preventing outdated or incorrect guidance.
+3. **Testing:**
+   - Write tests for new features
+   - Run all tests: `python tests/test_your_feature.py`
+   - **All tests MUST pass** before committing
 
-   **Process:**
-   1. Use `mcp__context7__resolve-library-id` to find the library
-   2. Use `mcp__context7__get-library-docs` to fetch current documentation
-   3. Use the documentation to inform your code or answer
+4. **Git Workflow:**
+   - Follow GIT_WORKFLOW.md exactly
+   - `git status` → `git add` → `git diff --staged` → `git commit` → `git push`
+   - Use conventional commit format (see GIT_WORKFLOW.md)
 
-   **Common libraries:**
-   - Shopify API: `/websites/shopify_dev`
-   - Requests: `/psf/requests`
-   - BeautifulSoup: `/wention/beautifulsoup4`
-   - Playwright: `/microsoft/playwright-python`
-   - Pandas: `/pandas-dev/pandas`
+5. **Documentation:**
+   - Update CLAUDE.md for implementation details
+   - Update README.md for user-facing changes
+   - Follow TECHNICAL_DOCS.md standards
 
-   **When to use:**
-   - ✅ Before implementing any API integration
-   - ✅ When answering questions about how libraries work
-   - ✅ When debugging API-related issues
-   - ✅ When checking field names, types, or requirements
-   - ✅ When explaining how to use any external library
+### Context7 Usage
 
-b. **Read Requirements Documentation**
-   - `/Users/moosemarketer/Code/shared-docs/python/PROJECT_STRUCTURE_REQUIREMENTS.md`
-   - `/Users/moosemarketer/Code/shared-docs/python/GUI_DESIGN_REQUIREMENTS.md`
-   - `/Users/moosemarketer/Code/shared-docs/python/GRAPHQL_OUTPUT_REQUIREMENTS.md`
-   - `/Users/moosemarketer/Code/shared-docs/python/GIT_WORKFLOW.md`
-   - `/Users/moosemarketer/Code/shared-docs/python/TECHNICAL_DOCS.md`
+**ALWAYS use Context7 before coding with external libraries:**
 
-#### 2. Coding Phase
+```bash
+mcp__context7__resolve-library-id → mcp__context7__get-library-docs
+```
 
-- Write clean, well-documented code
-- Follow Python best practices
-- Add type hints where appropriate
-- Include docstrings for functions
+**Common libraries:**
+- Shopify API: `/websites/shopify_dev`
+- Requests: `/psf/requests`
+- BeautifulSoup: `/wention/beautifulsoup4`
+- Playwright: `/microsoft/playwright-python`
+- Pandas: `/pandas-dev/pandas`
 
-#### 3. Testing Phase
+**Why:** Documentation changes frequently. Context7 provides current, accurate information.
 
-**REQUIRED - Do NOT skip this step:**
+### Task Completion Checklist
 
-a. **Run all tests** related to your changes
-   ```bash
-   python tests/test_your_feature.py
-   ```
+Before marking any coding task as complete:
 
-b. **Verify all tests pass** before proceeding to commit
-   - ✅ All tests must pass
-   - ✅ No errors or warnings
-   - ✅ Expected behavior confirmed
-
-#### 4. Git Commit Phase
-
-**REQUIRED after tests pass - Follow GIT_WORKFLOW.md:**
-
-a. **Check status and review changes:**
-   ```bash
-   git status
-   git diff
-   ```
-
-b. **Stage only relevant files:**
-   ```bash
-   git add file1.py file2.py
-   ```
-
-c. **Review staged changes:**
-   ```bash
-   git diff --staged
-   ```
-
-d. **Commit with conventional commit format:**
-   ```bash
-   git commit -m "feat: Brief description
-
-   Detailed explanation of what and why.
-
-   - Bullet point changes
-   - Test results
-
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-   Co-Authored-By: Claude <noreply@anthropic.com>"
-   ```
-
-e. **Push to remote:**
-   ```bash
-   git push origin main
-   ```
-
-#### 5. Documentation Phase
-
-**Update documentation to reflect changes:**
-
-a. **Update CLAUDE.md** if:
-   - Architecture changed
-   - New functions added
-   - New features implemented
-   - Workflow changed
-
-b. **Update README.md** if:
-   - User-facing features added
-   - Setup instructions changed
-   - Usage instructions changed
-
-### Commit Message Format
-
-**Use Conventional Commits format:**
-
-| Type | When to Use | Example |
-|------|-------------|---------|
-| `feat` | New feature | `feat: Add weight parsing from size field` |
-| `fix` | Bug fix | `fix: Resolve variant image mapping issue` |
-| `refactor` | Code restructuring | `refactor: Extract parsing logic to separate module` |
-| `docs` | Documentation only | `docs: Update weight parsing examples` |
-| `test` | Add/modify tests | `test: Add integration tests for variants` |
-| `chore` | Maintenance | `chore: Update dependencies` |
-
-**Subject line rules:**
-- Limit to 50 characters
-- Capitalize first letter
-- No period at end
-- Use imperative mood ("Add" not "Added")
-
-### Workflow Checklist
-
-Before considering a task complete, verify:
-
-- [ ] Used Context7 for any external library code
-- [ ] Read relevant requirements documentation
-- [ ] Code written and documented
+- [ ] Read relevant shared-docs requirements
+- [ ] Used Context7 for library documentation
+- [ ] Code follows PROJECT_STRUCTURE_REQUIREMENTS.md
 - [ ] Tests written and passing ✓
-- [ ] Changes staged with `git add`
-- [ ] Changes reviewed with `git diff --staged`
-- [ ] Committed with conventional commit message
-- [ ] Pushed to remote with `git push`
-- [ ] CLAUDE.md updated (if needed)
-- [ ] README.md updated (if needed)
+- [ ] Followed GIT_WORKFLOW.md completely
+  - [ ] `git status` checked
+  - [ ] Files staged with `git add`
+  - [ ] Changes reviewed with `git diff --staged`
+  - [ ] Committed with conventional format
+  - [ ] Pushed to remote with `git push`
+- [ ] Documentation updated (CLAUDE.md, README.md)
 
-### Common Mistakes to Avoid
+### Common Mistakes
 
-❌ **DO NOT:**
-- Write code without checking Context7 for library documentation
-- Skip writing tests
-- Commit without running tests
-- Push without committing
-- Use vague commit messages
-- Forget to update documentation
-- Ignore shared-docs requirements
+**DO NOT:**
+- Skip reading shared-docs requirements
+- Code without Context7 for library docs
+- Skip the testing phase
+- Skip the git commit phase
+- Forget to push commits
+- Duplicate content from shared-docs
 
-✅ **DO:**
-- Follow the complete workflow for every code change
-- Run tests before committing
-- Write clear, descriptive commit messages
-- Update documentation when behavior changes
-- Ask for clarification if requirements are unclear
+**DO:**
+- Treat shared-docs as the authoritative source
+- Reference shared-docs, don't duplicate them
+- Follow GIT_WORKFLOW.md exactly
+- Ask questions if requirements are unclear
 
 ---
 
