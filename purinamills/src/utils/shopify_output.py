@@ -128,7 +128,7 @@ def _parse_weight_from_size(size_value: str) -> tuple[Optional[float], Optional[
     Parse weight information from size string.
 
     Args:
-        size_value: Size string like "50 LB", "16 OZ", "2.5 KG", etc.
+        size_value: Size string like "50 LB", "16 OZ", "2.5 KG", "1 GALLON", "3 - 0.17 OZ PACKETS"
 
     Returns:
         Tuple of (weight, weight_unit, grams):
@@ -140,6 +140,8 @@ def _parse_weight_from_size(size_value: str) -> tuple[Optional[float], Optional[
         "50 LB" -> (50.0, "lb", 22680)
         "16 OZ" -> (16.0, "oz", 454)
         "2.5 KG" -> (2.5, "kg", 2500)
+        "1 GALLON" -> (7.5, "lb", 3401) [volume converted to weight]
+        "3 - 0.17 OZ PACKETS" -> (0.51, "oz", 14) [quantity × measurement]
         "EACH" -> (None, None, 0)
     """
     if not size_value:
@@ -148,20 +150,32 @@ def _parse_weight_from_size(size_value: str) -> tuple[Optional[float], Optional[
     # Normalize to uppercase for parsing
     size_upper = size_value.strip().upper()
 
-    # Pattern to match number + optional unit
-    # Handles: "50 LB", "50LB", "2.5 KG", "16OZ", etc.
-    pattern = r'^(\d+(?:\.\d+)?)\s*([A-Z]+)?$'
-    match = re.match(pattern, size_upper)
+    # Try complex format first: "quantity - measurement unit [optional text]"
+    # Example: "3 - 0.17 OZ PACKETS" -> quantity=3, measurement=0.17, unit=OZ
+    complex_pattern = r'^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*([A-Z]+)'
+    complex_match = re.match(complex_pattern, size_upper)
 
-    if not match:
-        return None, None, 0
+    if complex_match:
+        quantity_str, measurement_str, unit = complex_match.groups()
+        quantity = float(quantity_str)
+        measurement = float(measurement_str)
+        # Calculate total: quantity × measurement
+        total_value = quantity * measurement
+    else:
+        # Try simple format: "number unit"
+        # Handles: "50 LB", "50LB", "2.5 KG", "16OZ", "1 GALLON", etc.
+        simple_pattern = r'^(\d+(?:\.\d+)?)\s*([A-Z]+)?$'
+        simple_match = re.match(simple_pattern, size_upper)
 
-    weight_str, unit = match.groups()
-    weight = float(weight_str)
+        if not simple_match:
+            return None, None, 0
+
+        value_str, unit = simple_match.groups()
+        total_value = float(value_str)
+        unit = unit or ""
 
     # Normalize unit variations
-    unit = unit or ""
-    unit_map = {
+    weight_unit_map = {
         'LB': 'lb',
         'LBS': 'lb',
         'POUND': 'lb',
@@ -177,13 +191,40 @@ def _parse_weight_from_size(size_value: str) -> tuple[Optional[float], Optional[
         'GRAMS': 'g',
     }
 
-    # Check if this is a weight unit (not count/volume units)
-    if unit not in unit_map:
-        # Not a weight (could be EA, CT, GAL, etc.)
-        return None, None, 0
+    # Volume to weight conversions for animal feed products
+    # Based on typical feed densities (grain, pellets, etc.)
+    volume_to_weight_map = {
+        'GAL': ('lb', 7.5),           # 1 gallon feed ≈ 7.5 lbs
+        'GALLON': ('lb', 7.5),
+        'GALLONS': ('lb', 7.5),
+        'L': ('lb', 1.65),            # 1 liter feed ≈ 1.65 lbs (0.75 kg)
+        'LITER': ('lb', 1.65),
+        'LITERS': ('lb', 1.65),
+        'ML': ('g', 0.75),            # 1 ml feed ≈ 0.75 g
+        'MILLILITER': ('g', 0.75),
+        'MILLILITERS': ('g', 0.75),
+        'QT': ('lb', 1.875),          # 1 quart feed ≈ 1.875 lbs (1/4 gal)
+        'QUART': ('lb', 1.875),
+        'QUARTS': ('lb', 1.875),
+        'PT': ('lb', 0.9375),         # 1 pint feed ≈ 0.9375 lbs (1/2 qt)
+        'PINT': ('lb', 0.9375),
+        'PINTS': ('lb', 0.9375),
+        'FL': ('oz', 1.0),            # 1 fl oz ≈ 1 oz for feed supplements
+        'FLOZ': ('oz', 1.0),
+    }
 
-    # Convert to Shopify-compatible unit
-    shopify_unit = unit_map[unit]
+    # Check if it's a direct weight unit
+    if unit in weight_unit_map:
+        shopify_unit = weight_unit_map[unit]
+        weight = total_value
+    # Check if it's a volume unit that needs conversion
+    elif unit in volume_to_weight_map:
+        shopify_unit, conversion_factor = volume_to_weight_map[unit]
+        # Convert volume to weight: volume × density
+        weight = total_value * conversion_factor
+    else:
+        # Not a weight or volume (could be EA, CT, PACK, etc.)
+        return None, None, 0
 
     # Calculate grams for Shopify
     grams_conversion = {
