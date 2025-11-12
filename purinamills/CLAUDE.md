@@ -8,17 +8,23 @@ This is the **reference implementation** for the collectors architecture. It dem
 
 ## Python Development Standards
 
-### ⚠️ CRITICAL: ALWAYS Follow Shared Guidelines ⚠️
+### ⚠️ CRITICAL: ALWAYS Follow Complete Workflow ⚠️
 
 **MANDATORY:** Follow ALL guidelines in `/Users/moosemarketer/Code/shared-docs/python/` for all code changes.
 
-### Required Pre-Coding Checklist
+**This is NOT optional. Failure to follow these steps will result in incomplete work.**
 
-**Before generating ANY code OR answering questions**, you MUST:
+### Required Development Workflow
 
-1. **ALWAYS Use Context7 for Current Library Documentation**
+**Every code change MUST follow this complete workflow:**
 
-   **CRITICAL:** Before writing code OR answering questions about any library, API, or framework, you MUST use Context7 to fetch the latest documentation.
+#### 1. Pre-Coding Phase
+
+**Before writing ANY code OR answering questions about code:**
+
+a. **ALWAYS Use Context7 for Library Documentation**
+
+   **CRITICAL:** Before writing code involving external libraries, APIs, or frameworks, you MUST use Context7 to fetch the latest documentation.
 
    **Why:** Documentation changes frequently. Context7 provides up-to-date information from official sources, preventing outdated or incorrect guidance.
 
@@ -41,8 +47,139 @@ This is the **reference implementation** for the collectors architecture. It dem
    - ✅ When checking field names, types, or requirements
    - ✅ When explaining how to use any external library
 
-2. **Read shared-docs requirements**: PROJECT_STRUCTURE_REQUIREMENTS.md, GUI_DESIGN_REQUIREMENTS.md, GRAPHQL_OUTPUT_REQUIREMENTS.md, GIT_WORKFLOW.md, TECHNICAL_DOCS.md
-3. **Read collector-specific docs**: @~/Code/Python/collectors/shared/docs/README.md
+b. **Read Requirements Documentation**
+   - `/Users/moosemarketer/Code/shared-docs/python/PROJECT_STRUCTURE_REQUIREMENTS.md`
+   - `/Users/moosemarketer/Code/shared-docs/python/GUI_DESIGN_REQUIREMENTS.md`
+   - `/Users/moosemarketer/Code/shared-docs/python/GRAPHQL_OUTPUT_REQUIREMENTS.md`
+   - `/Users/moosemarketer/Code/shared-docs/python/GIT_WORKFLOW.md`
+   - `/Users/moosemarketer/Code/shared-docs/python/TECHNICAL_DOCS.md`
+
+#### 2. Coding Phase
+
+- Write clean, well-documented code
+- Follow Python best practices
+- Add type hints where appropriate
+- Include docstrings for functions
+
+#### 3. Testing Phase
+
+**REQUIRED - Do NOT skip this step:**
+
+a. **Run all tests** related to your changes
+   ```bash
+   python tests/test_your_feature.py
+   ```
+
+b. **Verify all tests pass** before proceeding to commit
+   - ✅ All tests must pass
+   - ✅ No errors or warnings
+   - ✅ Expected behavior confirmed
+
+#### 4. Git Commit Phase
+
+**REQUIRED after tests pass - Follow GIT_WORKFLOW.md:**
+
+a. **Check status and review changes:**
+   ```bash
+   git status
+   git diff
+   ```
+
+b. **Stage only relevant files:**
+   ```bash
+   git add file1.py file2.py
+   ```
+
+c. **Review staged changes:**
+   ```bash
+   git diff --staged
+   ```
+
+d. **Commit with conventional commit format:**
+   ```bash
+   git commit -m "feat: Brief description
+
+   Detailed explanation of what and why.
+
+   - Bullet point changes
+   - Test results
+
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+   Co-Authored-By: Claude <noreply@anthropic.com>"
+   ```
+
+e. **Push to remote:**
+   ```bash
+   git push origin main
+   ```
+
+#### 5. Documentation Phase
+
+**Update documentation to reflect changes:**
+
+a. **Update CLAUDE.md** if:
+   - Architecture changed
+   - New functions added
+   - New features implemented
+   - Workflow changed
+
+b. **Update README.md** if:
+   - User-facing features added
+   - Setup instructions changed
+   - Usage instructions changed
+
+### Commit Message Format
+
+**Use Conventional Commits format:**
+
+| Type | When to Use | Example |
+|------|-------------|---------|
+| `feat` | New feature | `feat: Add weight parsing from size field` |
+| `fix` | Bug fix | `fix: Resolve variant image mapping issue` |
+| `refactor` | Code restructuring | `refactor: Extract parsing logic to separate module` |
+| `docs` | Documentation only | `docs: Update weight parsing examples` |
+| `test` | Add/modify tests | `test: Add integration tests for variants` |
+| `chore` | Maintenance | `chore: Update dependencies` |
+
+**Subject line rules:**
+- Limit to 50 characters
+- Capitalize first letter
+- No period at end
+- Use imperative mood ("Add" not "Added")
+
+### Workflow Checklist
+
+Before considering a task complete, verify:
+
+- [ ] Used Context7 for any external library code
+- [ ] Read relevant requirements documentation
+- [ ] Code written and documented
+- [ ] Tests written and passing ✓
+- [ ] Changes staged with `git add`
+- [ ] Changes reviewed with `git diff --staged`
+- [ ] Committed with conventional commit message
+- [ ] Pushed to remote with `git push`
+- [ ] CLAUDE.md updated (if needed)
+- [ ] README.md updated (if needed)
+
+### Common Mistakes to Avoid
+
+❌ **DO NOT:**
+- Write code without checking Context7 for library documentation
+- Skip writing tests
+- Commit without running tests
+- Push without committing
+- Use vague commit messages
+- Forget to update documentation
+- Ignore shared-docs requirements
+
+✅ **DO:**
+- Follow the complete workflow for every code change
+- Run tests before committing
+- Write clear, descriptive commit messages
+- Update documentation when behavior changes
+- Ask for clarification if requirements are unclear
 
 ---
 
