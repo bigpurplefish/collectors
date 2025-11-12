@@ -7,7 +7,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.shopify_output import _parse_weight_from_size
+from src.utils.shopify_output import _parse_weight_from_size
 
 
 def test_weight_parsing():

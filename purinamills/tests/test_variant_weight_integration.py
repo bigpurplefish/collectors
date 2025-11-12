@@ -8,7 +8,7 @@ import json
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.shopify_output import generate_shopify_product
+from src.utils.shopify_output import generate_shopify_product
 
 
 def test_variant_weight_integration():

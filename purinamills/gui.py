@@ -840,7 +840,7 @@ def build_gui():
 
                                 # Import the output generator
                                 sys.path.insert(0, os.path.dirname(__file__))
-                                from utils.shopify_output import generate_shopify_product
+                                from src.utils.shopify_output import generate_shopify_product
 
                                 shopify_product = generate_shopify_product(
                                     parsed_data=parsed_data,
@@ -919,7 +919,7 @@ def build_gui():
 
                         # Import the output generator
                         sys.path.insert(0, os.path.dirname(__file__))
-                        from utils.shopify_output import generate_shopify_product
+                        from src.utils.shopify_output import generate_shopify_product
 
                         shopify_product = generate_shopify_product(
                             parsed_data=parsed_data,

@@ -14,7 +14,7 @@ sys.path.insert(0, parent_path)
 
 from shared.src.excel_utils import load_products
 from src.collector import PurinamillsCollector
-from utils.shopify_output import generate_shopify_product, merge_www_data
+from src.utils.shopify_output import generate_shopify_product, merge_www_data
 
 
 def test_first_product():
