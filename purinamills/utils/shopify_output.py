@@ -123,6 +123,81 @@ def _normalize_size(size_value: str) -> str:
     return ' '.join(normalized_words)
 
 
+def _parse_weight_from_size(size_value: str) -> tuple[Optional[float], Optional[str], int]:
+    """
+    Parse weight information from size string.
+
+    Args:
+        size_value: Size string like "50 LB", "16 OZ", "2.5 KG", etc.
+
+    Returns:
+        Tuple of (weight, weight_unit, grams):
+        - weight: Numeric weight value (or None if not a weight)
+        - weight_unit: Shopify-compatible unit ("lb", "oz", "kg", "g") or None
+        - grams: Weight in grams for Shopify shipping calculations
+
+    Examples:
+        "50 LB" -> (50.0, "lb", 22680)
+        "16 OZ" -> (16.0, "oz", 454)
+        "2.5 KG" -> (2.5, "kg", 2500)
+        "EACH" -> (None, None, 0)
+    """
+    if not size_value:
+        return None, None, 0
+
+    # Normalize to uppercase for parsing
+    size_upper = size_value.strip().upper()
+
+    # Pattern to match number + optional unit
+    # Handles: "50 LB", "50LB", "2.5 KG", "16OZ", etc.
+    pattern = r'^(\d+(?:\.\d+)?)\s*([A-Z]+)?$'
+    match = re.match(pattern, size_upper)
+
+    if not match:
+        return None, None, 0
+
+    weight_str, unit = match.groups()
+    weight = float(weight_str)
+
+    # Normalize unit variations
+    unit = unit or ""
+    unit_map = {
+        'LB': 'lb',
+        'LBS': 'lb',
+        'POUND': 'lb',
+        'POUNDS': 'lb',
+        'OZ': 'oz',
+        'OUNCE': 'oz',
+        'OUNCES': 'oz',
+        'KG': 'kg',
+        'KILOGRAM': 'kg',
+        'KILOGRAMS': 'kg',
+        'G': 'g',
+        'GRAM': 'g',
+        'GRAMS': 'g',
+    }
+
+    # Check if this is a weight unit (not count/volume units)
+    if unit not in unit_map:
+        # Not a weight (could be EA, CT, GAL, etc.)
+        return None, None, 0
+
+    # Convert to Shopify-compatible unit
+    shopify_unit = unit_map[unit]
+
+    # Calculate grams for Shopify
+    grams_conversion = {
+        'lb': 453.592,
+        'oz': 28.3495,
+        'kg': 1000.0,
+        'g': 1.0
+    }
+
+    grams = round(weight * grams_conversion[shopify_unit])
+
+    return weight, shopify_unit, grams
+
+
 def _format_body_html(html: str) -> str:
     """
     Format body_html with proper paragraph tags.
@@ -289,6 +364,21 @@ def generate_shopify_product(
         sku = variant_record.get('item_#', f"PUR-{variant_position:04d}")
         barcode = variant_record.get('sku', variant_record.get('upc', variant_record.get('upc_updated', '')))
 
+        # Parse weight from size field
+        weight_value = None
+        weight_unit_value = "lb"  # Default to lb
+        grams_value = 0
+
+        # Try to parse weight from size field
+        size_raw = variant_record.get('size', '')
+        if size_raw:
+            parsed_weight, parsed_unit, parsed_grams = _parse_weight_from_size(str(size_raw))
+            if parsed_weight is not None:
+                weight_value = parsed_weight
+                weight_unit_value = parsed_unit
+                grams_value = parsed_grams
+                log(f"      - Variant {variant_position}: Parsed weight {weight_value} {weight_unit_value} ({grams_value}g) from '{size_raw}'")
+
         # Determine correct image_id for this variant
         image_id = variant_position  # Default: use variant position
 
@@ -335,14 +425,17 @@ def generate_shopify_product(
             "inventory_management": "shopify",
             "taxable": True,
             "barcode": barcode,
-            "grams": 0,
-            "weight": 0,
-            "weight_unit": "lb",
             "inventory_quantity": int(variant_record.get('inventory_qty', 0)),
             "requires_shipping": True,
             "metafields": [],
             "image_id": image_id
         }
+
+        # Only add weight fields if we successfully parsed weight data
+        if weight_value is not None:
+            variant["weight"] = weight_value
+            variant["weight_unit"] = weight_unit_value
+            variant["grams"] = grams_value
 
         # Only add option fields if they have values
         if option1_value:

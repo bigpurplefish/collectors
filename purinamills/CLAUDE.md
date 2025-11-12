@@ -6,6 +6,46 @@ This is the **reference implementation** for the collectors architecture. It dem
 
 ---
 
+## Python Development Standards
+
+### ⚠️ CRITICAL: ALWAYS Follow Shared Guidelines ⚠️
+
+**MANDATORY:** Follow ALL guidelines in `/Users/moosemarketer/Code/shared-docs/python/` for all code changes.
+
+### Required Pre-Coding Checklist
+
+**Before generating ANY code OR answering questions**, you MUST:
+
+1. **ALWAYS Use Context7 for Current Library Documentation**
+
+   **CRITICAL:** Before writing code OR answering questions about any library, API, or framework, you MUST use Context7 to fetch the latest documentation.
+
+   **Why:** Documentation changes frequently. Context7 provides up-to-date information from official sources, preventing outdated or incorrect guidance.
+
+   **Process:**
+   1. Use `mcp__context7__resolve-library-id` to find the library
+   2. Use `mcp__context7__get-library-docs` to fetch current documentation
+   3. Use the documentation to inform your code or answer
+
+   **Common libraries:**
+   - Shopify API: `/websites/shopify_dev`
+   - Requests: `/psf/requests`
+   - BeautifulSoup: `/wention/beautifulsoup4`
+   - Playwright: `/microsoft/playwright-python`
+   - Pandas: `/pandas-dev/pandas`
+
+   **When to use:**
+   - ✅ Before implementing any API integration
+   - ✅ When answering questions about how libraries work
+   - ✅ When debugging API-related issues
+   - ✅ When checking field names, types, or requirements
+   - ✅ When explaining how to use any external library
+
+2. **Read shared-docs requirements**: PROJECT_STRUCTURE_REQUIREMENTS.md, GUI_DESIGN_REQUIREMENTS.md, GRAPHQL_OUTPUT_REQUIREMENTS.md, GIT_WORKFLOW.md, TECHNICAL_DOCS.md
+3. **Read collector-specific docs**: @~/Code/Python/collectors/shared/docs/README.md
+
+---
+
 ## Project Overview
 
 The Purinamills collector retrieves and enriches product data from Purina Mills websites for Shopify import. It's a sophisticated data collection system with dual-site support, intelligent fallback strategies, and comprehensive data enrichment.
@@ -292,6 +332,7 @@ generate_shopify_product()      # Main generator
 ├── _format_body_html()         # Clean and format description
 ├── _clean_html()                # Remove scripts, styles, non-content
 ├── _normalize_size()            # Standardize weight/volume units
+├── _parse_weight_from_size()    # Extract weight and unit from size strings
 ├── _generate_alt_tags()         # SEO-friendly alt text with filters
 └── merge_www_data()            # Merge shop + www site data
 ```
@@ -326,6 +367,35 @@ variants: [
   - "50 LB" → "50 LB"
   - "2 GALLON" → "2 Gallon"
   - "EACH" → "Each"
+
+**Weight Parsing:**
+
+Automatically extracts weight data from the `size` field in input file and populates variant weight fields:
+
+- **Supported Units**: LB, LBS, OZ, KG, G (and variations: Pound, Ounce, Kilogram, Gram)
+- **Automatic Conversion**: Calculates `grams` field for Shopify shipping calculations
+- **Shopify-Compatible**: Outputs "lb", "oz", "kg", "g" as weight_unit
+- **Conditional Fields**: Weight fields only included when successfully parsed (omitted if unknown)
+
+Examples:
+- "50 LB" → weight: 50, weight_unit: "lb", grams: 22680
+- "16 OZ" → weight: 16, weight_unit: "oz", grams: 454
+- "2.5 KG" → weight: 2.5, weight_unit: "kg", grams: 2500
+- "500 G" → weight: 500, weight_unit: "g", grams: 500
+- "EACH" → weight fields omitted (non-weight units ignored)
+- Missing size → weight fields omitted (cleaner data, Shopify handles appropriately)
+
+**Conversion Rates:**
+- 1 lb = 453.592 grams
+- 1 oz = 28.3495 grams
+- 1 kg = 1000 grams
+- 1 g = 1 gram
+
+**Why Omit Instead of Zero:**
+- More accurate: We don't know the weight, so don't claim it's 0
+- Shopify treats weight fields as optional
+- Prevents interference with shipping calculations
+- Lets Shopify handle missing data appropriately
 
 **Alt Tag Generation:**
 
@@ -641,7 +711,7 @@ When product not found on manufacturer sites:
 
 ### Prerequisites
 
-- Python 3.13+
+- Python 3.12.9
 - pyenv (recommended for virtual environment)
 - Git (for repository access)
 
@@ -654,7 +724,7 @@ cd /Users/moosemarketer/Code/garoppos/collectors/purinamills
 # 2. Set up Python virtual environment
 pyenv local purinamills
 # Or create new environment:
-pyenv virtualenv 3.13.1 purinamills
+pyenv virtualenv 3.12.9 purinamills
 pyenv local purinamills
 
 # 3. Install core dependencies
@@ -1334,8 +1404,8 @@ tail -f logs/purinamills.log
 ```
 
 2. **Python/Tk version:**
-   - Ensure Python 3.13+
-   - Update Tk: `brew upgrade python-tk@3.13`
+   - Ensure Python 3.12.9
+   - Update Tk: `brew upgrade python-tk@3.12`
    - Verify ttkbootstrap version
 
 3. **Thread issues:**
