@@ -1,0 +1,38 @@
+# Coverage configuration for purinamills collector
+[run]
+source = src
+omit =
+    */tests/*
+    */__pycache__/*
+    */venv/*
+    */env/*
+
+[report]
+# Show missing lines in coverage report
+show_missing = True
+
+# Exclude lines from coverage
+exclude_lines =
+    # Standard pragmas
+    pragma: no cover
+
+    # Debug code
+    def __repr__
+
+    # Abstract methods
+    @abc.abstractmethod
+    @abstractmethod
+
+    # Defensive assertions
+    raise AssertionError
+    raise NotImplementedError
+
+    # Type checking
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+
+    # Main guards
+    if __name__ == .__main__.:
+
+[html]
+directory = htmlcov
