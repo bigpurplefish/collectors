@@ -405,20 +405,58 @@ def generate_shopify_product(
         sku = variant_record.get('item_#', f"PUR-{variant_position:04d}")
         barcode = variant_record.get('sku', variant_record.get('upc', variant_record.get('upc_updated', '')))
 
-        # Parse weight from size field
+        # Parse weight from size field with fallbacks
         weight_value = None
         weight_unit_value = "lb"  # Default to lb
         grams_value = 0
 
         # Try to parse weight from size field
         size_raw = variant_record.get('size', '')
+        weight_source = None
+
         if size_raw:
             parsed_weight, parsed_unit, parsed_grams = _parse_weight_from_size(str(size_raw))
             if parsed_weight is not None:
                 weight_value = parsed_weight
                 weight_unit_value = parsed_unit
                 grams_value = parsed_grams
-                log(f"      - Variant {variant_position}: Parsed weight {weight_value} {weight_unit_value} ({grams_value}g) from '{size_raw}'")
+                weight_source = f"size field '{size_raw}'"
+
+        # Fallback 1: Try upcitemdb_size field
+        if weight_value is None:
+            upcitemdb_size = variant_record.get('upcitemdb_size', '')
+            if upcitemdb_size:
+                # Clean up the upcitemdb_size (may be like "[50 lbs]" or "50 lbs")
+                size_cleaned = str(upcitemdb_size).strip('[]').strip()
+                parsed_weight, parsed_unit, parsed_grams = _parse_weight_from_size(size_cleaned)
+                if parsed_weight is not None:
+                    weight_value = parsed_weight
+                    weight_unit_value = parsed_unit
+                    grams_value = parsed_grams
+                    weight_source = f"upcitemdb_size '{size_cleaned}'"
+
+        # Fallback 2: Try parsing from upcitemdb_title
+        if weight_value is None:
+            upcitemdb_title = variant_record.get('upcitemdb_title', '')
+            if upcitemdb_title:
+                # Try to extract weight from title using regex
+                # Matches patterns like "50lb", "50 lb", "50-lb", "50 LB"
+                weight_match = re.search(r'(\d+(?:\.\d+)?)\s*[-\s]?\s*(lb|lbs|oz|kg|g|gallon|gal|liter|l)\b',
+                                       upcitemdb_title, re.IGNORECASE)
+                if weight_match:
+                    weight_str = weight_match.group(1)
+                    unit_str = weight_match.group(2)
+                    size_from_title = f"{weight_str} {unit_str}"
+                    parsed_weight, parsed_unit, parsed_grams = _parse_weight_from_size(size_from_title)
+                    if parsed_weight is not None:
+                        weight_value = parsed_weight
+                        weight_unit_value = parsed_unit
+                        grams_value = parsed_grams
+                        weight_source = f"upcitemdb_title (extracted '{size_from_title}')"
+
+        # Log weight parsing result
+        if weight_value is not None:
+            log(f"      - Variant {variant_position}: Parsed weight {weight_value} {weight_unit_value} ({grams_value}g) from {weight_source}")
 
         # Determine correct image_id for this variant
         image_id = variant_position  # Default: use variant position

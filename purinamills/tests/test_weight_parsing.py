@@ -59,3 +59,42 @@ def test_weight_parsing(input_val, expected_weight, expected_unit, expected_gram
     assert weight == expected_weight, f"Weight mismatch for '{input_val}'"
     assert unit == expected_unit, f"Unit mismatch for '{input_val}'"
     assert grams == expected_grams, f"Grams mismatch for '{input_val}'"
+
+
+def test_weight_parsing_with_brackets():
+    """Test parsing weight from upcitemdb_size format with brackets"""
+    from src.utils.shopify_output import _parse_weight_from_size
+    
+    # Simulate cleaning brackets like we do in shopify_output.py
+    upcitemdb_size = "[50 lbs]"
+    size_cleaned = upcitemdb_size.strip('[]').strip()
+    
+    weight, unit, grams = _parse_weight_from_size(size_cleaned)
+    
+    assert weight == 50.0, f"Expected 50.0, got {weight}"
+    assert unit == "lb", f"Expected 'lb', got {unit}"
+    assert grams == 22680, f"Expected 22680, got {grams}"
+
+
+def test_weight_extraction_from_title():
+    """Test extracting weight from upcitemdb_title"""
+    import re
+    from src.utils.shopify_output import _parse_weight_from_size
+    
+    # Test the regex pattern used in fallback 2
+    upcitemdb_title = "Purina Animal Nutrition Purina Goat Grower 16 DQ .0015 50lb PLT 50 lb"
+    
+    weight_match = re.search(r'(\d+(?:\.\d+)?)\s*[-\s]?\s*(lb|lbs|oz|kg|g|gallon|gal|liter|l)\b',
+                           upcitemdb_title, re.IGNORECASE)
+    
+    assert weight_match is not None, "Should find weight in title"
+    
+    weight_str = weight_match.group(1)
+    unit_str = weight_match.group(2)
+    size_from_title = f"{weight_str} {unit_str}"
+    
+    weight, unit, grams = _parse_weight_from_size(size_from_title)
+    
+    assert weight == 50.0, f"Expected 50.0, got {weight}"
+    assert unit == "lb", f"Expected 'lb', got {unit}"
+    assert grams == 22680, f"Expected 22680, got {grams}"
