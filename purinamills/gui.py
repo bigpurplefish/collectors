@@ -696,9 +696,11 @@ def build_gui():
                 # Process products
                 enriched = []
                 failed_records = []  # Track failed records for summary and error log
+                unmatched_products = []  # Track unmatched products (no manufacturer match AND no UPCItemDB match)
                 success_count = 0
                 skip_count = 0
                 fail_count = 0
+                unmatched_count = 0
 
                 for i, group in enumerate(product_groups):
                     product = group['parent']
@@ -743,13 +745,16 @@ def build_gui():
                             upcitemdb_status = product.get('upcitemdb_status', '')
 
                             if upcitemdb_status == "Lookup failed":
-                                error_msg = "Product not found and UPCItemDB lookup failed"
-                                status(f"  ⚠ Skipping: UPCItemDB lookup also failed")
-                                # Don't add to enriched - only add to failed_records
-                                failed_records.append({
+                                error_msg = "No manufacturer match and no UPCItemDB data"
+                                status(f"  ⚠ Unmatched: No manufacturer match and no UPCItemDB data")
+                                # This is an unmatched product - add to both lists
+                                unmatched_record = {
                                     **product,  # Include all original fields
                                     'error_reason': error_msg
-                                })
+                                }
+                                unmatched_products.append(unmatched_record)
+                                failed_records.append(unmatched_record)
+                                unmatched_count += 1
                                 fail_count += 1
                                 status("")
                                 continue
@@ -861,13 +866,17 @@ def build_gui():
                                 continue
 
                             else:
-                                # No fallback available
-                                error_msg = "Product not found"
-                                # Don't add to enriched - only add to failed_records
-                                failed_records.append({
+                                # No fallback available (upcitemdb_status is blank or invalid)
+                                error_msg = "No manufacturer match and no UPCItemDB data"
+                                status(f"  ⚠ Unmatched: No manufacturer match and no UPCItemDB data")
+                                # This is an unmatched product - add to both lists
+                                unmatched_record = {
                                     **product,
                                     'error_reason': error_msg
-                                })
+                                }
+                                unmatched_products.append(unmatched_record)
+                                failed_records.append(unmatched_record)
+                                unmatched_count += 1
                                 fail_count += 1
                                 status("")
                                 continue
@@ -966,6 +975,25 @@ def build_gui():
                 with open(output_file, 'w', encoding='utf-8') as f:
                     json.dump(output_data, f, indent=2, ensure_ascii=False)
 
+                status(f"  ✓ Saved {len(enriched)} product(s)")
+
+                # Save unmatched products to separate file
+                if unmatched_products:
+                    from pathlib import Path
+                    output_path = Path(output_file)
+                    unmatched_file = output_path.parent / f"{output_path.stem}_unmatched.json"
+
+                    status(f"Saving unmatched products to {unmatched_file}...")
+                    unmatched_data = {
+                        "unmatched_products": unmatched_products
+                    }
+
+                    with open(unmatched_file, 'w', encoding='utf-8') as f:
+                        json.dump(unmatched_data, f, indent=2, ensure_ascii=False)
+
+                    status(f"  ✓ Saved {len(unmatched_products)} unmatched product(s)")
+                    status(f"  These products could not be found on manufacturer site and have no UPCItemDB data.")
+
                 # Save error log if there are failed records
                 if failed_records:
                     error_log_file = output_file.replace('.json', '_errors.xlsx')
@@ -998,6 +1026,7 @@ def build_gui():
                 status("=" * 80)
                 status(f"✅ Successful: {success_count}")
                 status(f"⚠ Skipped: {skip_count}")
+                status(f"🔍 Unmatched: {unmatched_count}")
                 status(f"❌ Failed: {fail_count}")
                 status(f"Total: {len(product_groups)} product(s) from {len(products)} record(s)")
 
@@ -1019,7 +1048,7 @@ def build_gui():
                 status("=" * 80)
 
                 # Queue messagebox to main thread
-                messagebox_queue.put(("info", "Success", f"Processing complete!\n\n✅ Successful: {success_count}\n⚠ Skipped: {skip_count}\n❌ Failed: {fail_count}\n\nProcessed {len(product_groups)} product(s) from {len(products)} record(s)"))
+                messagebox_queue.put(("info", "Success", f"Processing complete!\n\n✅ Successful: {success_count}\n⚠ Skipped: {skip_count}\n🔍 Unmatched: {unmatched_count}\n❌ Failed: {fail_count}\n\nProcessed {len(product_groups)} product(s) from {len(products)} record(s)"))
 
             except Exception as e:
                 status(f"\n❌ FATAL ERROR: {str(e)}")

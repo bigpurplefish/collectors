@@ -64,6 +64,7 @@ It uses a 3-tier fallback strategy:
 - **Record range selection** - Process subset of records (Start/End Record fields)
 - **Auto-save configuration** - Persists settings between sessions
 - **Error tracking** - Generates error report Excel files
+- **Unmatched products handling** - Products with no manufacturer match AND no UPCItemDB data are saved to separate `_unmatched.json` file
 
 ### Performance & Reliability
 - **Rate limiting** with configurable jitter (200-700ms)
@@ -232,11 +233,46 @@ Excel file (.xlsx) with columns:
 
 ## Output Format
 
-Shopify-compatible JSON with:
+### Primary Output (purinamills.json)
+
+Shopify-compatible JSON with successfully matched products:
 - All original input fields preserved
 - `manufacturer` object with enriched product data
 - `shopify.media` array with image filenames
 - Support for parent/variant structure
+
+### Unmatched Products (purinamills_unmatched.json)
+
+**Generated when products cannot be matched**
+
+Products are saved to this separate file when BOTH conditions are true:
+- ❌ No manufacturer site match (not found on shop.purinamills.com or www.purinamills.com)
+- ❌ No UPCItemDB match (`upcitemdb_status` ≠ "Match found")
+
+**File Structure:**
+```json
+{
+  "unmatched_products": [
+    {
+      "upc": "012345678901",
+      "description_1": "Product Name",
+      "item_#": "SKU001",
+      "upcitemdb_status": "Lookup failed",
+      "error_reason": "No manufacturer match and no UPCItemDB data"
+    }
+  ]
+}
+```
+
+**Benefits:**
+- Primary output contains only processable products
+- Unmatched products preserved for review
+- Can be re-imported after fixing data or adding to manufacturer site
+- Included in error report Excel for easy analysis
+
+### Error Report (purinamills_errors.xlsx)
+
+Excel file containing all failed products (including unmatched) with error reasons.
 
 ## Development
 
