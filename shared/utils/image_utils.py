@@ -122,7 +122,8 @@ def generate_variant_alt_tag(option1: str = "", option2: str = "", option3: str 
 
     for option_value in [option1, option2, option3, option4]:
         if option_value:
-            alt_parts.append(option_value)
+            # Convert to string to handle numeric values from Excel data
+            alt_parts.append(str(option_value))
 
     return "#" + "#".join(alt_parts) if alt_parts else ""
 
