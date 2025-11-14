@@ -546,37 +546,58 @@ class CambridgeProductGenerator:
                     })
 
         # Step 2: Create variant entries grouped by variant (easier for human review)
-        # Group all images for each variant together in gallery order
-        for unit in sorted_units:
-            for img_info in unique_images:
-                img_url = img_info["url"]
-                img_type = img_info["type"]
-                color = img_info["color"]
-                counter = img_info["counter"]
+        # Group all images for each variant (color + unit) together in gallery order
+        # Variants are combinations of color AND unit_of_sale
 
-                # Generate base alt tag based on image type
-                if img_type == "portal":
-                    alt_base = f"{product_title} - Product Image {counter}"
-                elif img_type == "hero":
-                    alt_base = generate_lifestyle_alt_tag(product_title, "Hero")
-                else:  # lifestyle
-                    alt_base = generate_lifestyle_alt_tag(product_title, f"Lifestyle {counter}")
+        # Get all unique colors from variant records
+        colors_in_order = []
+        seen_colors = set()
+        for record in variant_records:
+            color = record.get("color", "")
+            if color and color not in seen_colors:
+                colors_in_order.append(color)
+                seen_colors.add(color)
 
-                # Create variant filter for this unit_of_sale
-                variant_filter = generate_variant_alt_tag(
-                    option1=color,
-                    option2=unit,
-                    option3="",
-                    option4=""
-                )
-                alt_text = f"{alt_base} {variant_filter}" if variant_filter else alt_base
+        # For each color + unit combination (each variant)
+        for color in colors_in_order:
+            for unit in sorted_units:
+                # Add images for this specific variant (color + unit combination)
+                # Order: portal images for this color, then hero, then lifestyle
 
-                images.append({
-                    "position": position,
-                    "src": img_url,
-                    "alt": alt_text
-                })
-                position += 1
+                for img_info in unique_images:
+                    img_url = img_info["url"]
+                    img_type = img_info["type"]
+                    img_color = img_info["color"]
+                    counter = img_info["counter"]
+
+                    # Only include portal images that match this color
+                    # Public images (hero/lifestyle) are shown for all variants
+                    if img_type == "portal" and img_color != color:
+                        continue
+
+                    # Generate base alt tag based on image type
+                    if img_type == "portal":
+                        alt_base = f"{product_title} - Product Image {counter}"
+                    elif img_type == "hero":
+                        alt_base = generate_lifestyle_alt_tag(product_title, "Hero")
+                    else:  # lifestyle
+                        alt_base = generate_lifestyle_alt_tag(product_title, f"Lifestyle {counter}")
+
+                    # Create variant filter for this color + unit combination
+                    variant_filter = generate_variant_alt_tag(
+                        option1=color,
+                        option2=unit,
+                        option3="",
+                        option4=""
+                    )
+                    alt_text = f"{alt_base} {variant_filter}" if variant_filter else alt_base
+
+                    images.append({
+                        "position": position,
+                        "src": img_url,
+                        "alt": alt_text
+                    })
+                    position += 1
 
         return images
 
