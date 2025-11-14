@@ -274,7 +274,7 @@ class CambridgeProductGenerator:
                     "name": "Kit",
                     "cost_key": "cost_per_kit",
                     "price_key": "price_per_kit",
-                    "conversion_factor": None,  # Kit doesn't have weight calculation
+                    "conversion_factor": 1,  # Kit weight equals Cube weight
                     "conversion_name": None
                 },
                 {
@@ -319,8 +319,8 @@ class CambridgeProductGenerator:
                 if math.isnan(cost) or math.isnan(price):
                     continue
 
-                # Validate conversion factor exists (except for Kit which doesn't need weight)
-                if unit_config["name"] != "Kit" and unit_config["conversion_factor"] is not None:
+                # Validate conversion factor exists
+                if unit_config["conversion_factor"] is not None:
                     if unit_config["conversion_factor"] == 0:
                         raise ValueError(
                             f"Product '{product_title}' color '{color}' has {unit_config['name']} cost/price data "
@@ -328,11 +328,7 @@ class CambridgeProductGenerator:
                         )
 
                 # Calculate weight
-                if unit_config["name"] == "Kit":
-                    # Kit doesn't have weight calculation
-                    weight_value = 0
-                    grams = 0
-                elif unit_config["conversion_factor"] is not None and cube_weight_value:
+                if unit_config["conversion_factor"] is not None and cube_weight_value:
                     weight_value = cube_weight_value / unit_config["conversion_factor"]
                     grams = int(weight_value * 453.592) if weight_unit == "lb" else 0
                 else:
