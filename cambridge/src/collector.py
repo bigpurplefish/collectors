@@ -65,6 +65,7 @@ class CambridgeCollector:
         self.public_parser = CambridgePublicParser(self.config)
         self.portal_index_builder = CambridgePortalIndexBuilder(self.config)
         self.portal_searcher = CambridgePortalSearcher(self.config)
+        self.portal_parser = CambridgePortalParser(self.config)
 
         # HTTP session with retries
         self.session = self._create_http_session()
@@ -189,6 +190,21 @@ class CambridgeCollector:
             log(f"❌ Failed to build portal index: {e}")
             return False
 
+    def ensure_portal_logged_in(self, log: Callable = print) -> bool:
+        """
+        Ensure logged in to dealer portal.
+
+        Args:
+            log: Logging function
+
+        Returns:
+            True if logged in successfully
+        """
+        if self.portal_parser._logged_in:
+            return True
+
+        return self.portal_parser.login(log)
+
     def find_product_url(
         self,
         title: str,
@@ -301,27 +317,22 @@ class CambridgeCollector:
                 log("  ❌ No URL found for product")
                 return {}
 
-            # Initialize portal parser with credentials
-            portal_config = self.config.copy()
-            portal_parser = CambridgePortalParser(portal_config)
+            # Ensure logged in (reuses existing session)
+            if not self.ensure_portal_logged_in(log):
+                log("  ❌ Failed to login to dealer portal")
+                return {}
 
-            with portal_parser:
-                # Login
-                if not portal_parser.login(log):
-                    log("  ❌ Failed to login to dealer portal")
-                    return {}
+            # Fetch and parse product page
+            html = self.portal_parser.fetch_product_page(product_url, log)
 
-                # Fetch and parse product page
-                html = portal_parser.fetch_product_page(product_url, log)
+            if not html:
+                log("  ❌ Failed to fetch portal page")
+                return {}
 
-                if not html:
-                    log("  ❌ Failed to fetch portal page")
-                    return {}
+            data = self.portal_parser.parse_product_page(html, log)
+            log("  ✓ Portal data collected")
 
-                data = portal_parser.parse_product_page(html, log)
-                log("  ✓ Portal data collected")
-
-                return data
+            return data
 
         except Exception as e:
             log(f"  ❌ Failed to collect portal data: {e}")
@@ -331,3 +342,5 @@ class CambridgeCollector:
         """Close HTTP session and cleanup."""
         if self.session:
             self.session.close()
+        if self.portal_parser:
+            self.portal_parser.close()
