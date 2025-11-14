@@ -245,7 +245,7 @@ class CambridgeCollector:
                 data["gallery_images"] = gallery_playwright
                 log(f"  ✓ Extracted {len(gallery_playwright)} images from lightbox")
             else:
-                log(f"  ⚠ Playwright extraction failed, using HTML parsing ({len(data.get('gallery_images', []))} images)")
+                log(f"  ⚠ Playwright gallery extraction failed, no gallery detected ({len(data.get('gallery_images', []))} images)")
 
             # Log what was captured
             hero = data.get("hero_image", "")
