@@ -429,10 +429,13 @@ class CambridgeProductGenerator:
         """
         Generate images array with proper ordering and alt tags.
 
+        Creates separate image entries for each variant combination (color × unit_of_sale)
+        to support Shopify's gallery filtering.
+
         Order:
         1. Product images from portal (all colors) with variant alt tags
-        2. Hero image from public site with variant alt tag (first color)
-        3. Gallery images from public site with variant alt tags (first color)
+        2. Hero image from public site with variant alt tags
+        3. Gallery images from public site with variant alt tags
 
         All images receive variant alt tags for Shopify variant filtering.
 
@@ -445,18 +448,33 @@ class CambridgeProductGenerator:
         Returns:
             List of image dictionaries with proper alt tags
         """
+        import math
         images = []
         position = 1
 
-        # Determine if we have sales units for option2
-        all_sales_units = set()
-        for pd in portal_data_by_color.values():
-            su = pd.get("sales_unit", "").strip()
-            if su:
-                all_sales_units.add(su)
-        has_unit_option = bool(all_sales_units)
+        # Determine all unit_of_sale options from input records
+        unit_options = set()
+        for record in variant_records:
+            # Check which unit types have cost/price data
+            if not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
+                unit_options.add("Sq Ft")
+            if not math.isnan(record.get("cost_per_kit", float('nan'))) and not math.isnan(record.get("price_per_kit", float('nan'))):
+                unit_options.add("Kit")
+            if not math.isnan(record.get("cost_per_cube", float('nan'))) and not math.isnan(record.get("price_per_cube", float('nan'))):
+                unit_options.add("Cube")
+            if not math.isnan(record.get("cost_per_piece", float('nan'))) and not math.isnan(record.get("price_per_piece", float('nan'))):
+                unit_options.add("Piece")
+            if not math.isnan(record.get("cost_per_layer", float('nan'))) and not math.isnan(record.get("price_per_layer", float('nan'))):
+                unit_options.add("Layer")
+            if not math.isnan(record.get("cost_per_band", float('nan'))) and not math.isnan(record.get("price_per_band", float('nan'))):
+                unit_options.add("Band")
 
-        # Phase 1: Add product images from portal (all colors) with descriptive alt tags + variant filters
+        # Sort unit options in the specified order
+        unit_order = ["Sq Ft", "Kit", "Cube", "Piece", "Layer", "Band"]
+        sorted_units = [unit for unit in unit_order if unit in unit_options]
+
+        # Phase 1: Add product images from portal (all colors)
+        # Create one image entry per color × unit_of_sale combination
         portal_img_counter = {}  # Track image count per color for unique descriptions
         for color, portal_data in portal_data_by_color.items():
             gallery_images = portal_data.get("gallery_images", [])
@@ -464,91 +482,96 @@ class CambridgeProductGenerator:
             if color not in portal_img_counter:
                 portal_img_counter[color] = 0
 
-            # Generate variant filter for this color
-            sales_unit = portal_data.get("sales_unit", "") if has_unit_option else ""
-            variant_filter = generate_variant_alt_tag(
-                option1=color,
-                option2=sales_unit if has_unit_option else "",
-                option3="",
-                option4=""
-            )
-
+            # For each portal image, create entries for each unit_of_sale option
             for img_url in gallery_images:
-                # Clean and verify URL
                 cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
                 if cleaned_url:
                     portal_img_counter[color] += 1
-                    # Portal alt: "Product Title - Product Image 1 #option1#option2"
-                    portal_alt = f"{product_title} - Product Image {portal_img_counter[color]}"
-                    if variant_filter:
-                        portal_alt = f"{portal_alt} {variant_filter}"
+                    portal_alt_base = f"{product_title} - Product Image {portal_img_counter[color]}"
 
-                    images.append({
-                        "position": position,
-                        "src": cleaned_url,
-                        "alt": portal_alt
-                    })
-                    position += 1
+                    # Create one image entry per unit_of_sale
+                    for unit in sorted_units:
+                        variant_filter = generate_variant_alt_tag(
+                            option1=color,
+                            option2=unit,
+                            option3="",
+                            option4=""
+                        )
+                        portal_alt = f"{portal_alt_base} {variant_filter}" if variant_filter else portal_alt_base
 
-        # Phase 2 & 3: Add hero and gallery images from public site with variant alt tags
-        # Public images are shared across all variants, so use the first variant's alt tag
-        if variant_records:
-            first_color = variant_records[0].get("color", "")
-            first_portal_data = portal_data_by_color.get(first_color, {})
-            first_sales_unit = first_portal_data.get("sales_unit", "") if has_unit_option else ""
+                        images.append({
+                            "position": position,
+                            "src": cleaned_url,
+                            "alt": portal_alt
+                        })
+                        position += 1
 
-            # Generate variant filter tag for first variant (all public images use this)
-            variant_filter = generate_variant_alt_tag(
-                option1=first_color,
-                option2=first_sales_unit if has_unit_option else "",
-                option3="",
-                option4=""
-            )
+        # Phase 2 & 3: Add hero and gallery images from public site
+        # Create one image entry per color × unit_of_sale combination
+        hero_image = public_data.get("hero_image", "")
+        gallery_images = public_data.get("gallery_images", [])
 
-            # Add hero image with descriptive alt tag + variant filter
-            hero_image = public_data.get("hero_image", "")
+        # For each color in variant records
+        for record in variant_records:
+            color = record.get("color", "")
+
+            # Add hero image with variant filter for each unit_of_sale
             if hero_image:
                 cleaned_url = clean_and_verify_image_url(hero_image, timeout=10)
                 if cleaned_url:
-                    # Hero alt: "Product Title - Hero #option1#option2"
-                    hero_alt = generate_lifestyle_alt_tag(product_title, "Hero")
-                    if variant_filter:
-                        hero_alt = f"{hero_alt} {variant_filter}"
+                    hero_alt_base = generate_lifestyle_alt_tag(product_title, "Hero")
 
-                    images.append({
-                        "position": position,
-                        "src": cleaned_url,
-                        "alt": hero_alt
-                    })
-                    position += 1
+                    # Create one image entry per unit_of_sale
+                    for unit in sorted_units:
+                        variant_filter = generate_variant_alt_tag(
+                            option1=color,
+                            option2=unit,
+                            option3="",
+                            option4=""
+                        )
+                        hero_alt = f"{hero_alt_base} {variant_filter}" if variant_filter else hero_alt_base
 
-            # Add gallery images with descriptive alt tags + variant filters
-            gallery_images = public_data.get("gallery_images", [])
-            lifestyle_counter = 0  # Track lifestyle image count for unique descriptions
+                        images.append({
+                            "position": position,
+                            "src": cleaned_url,
+                            "alt": hero_alt
+                        })
+                        position += 1
+
+            # Add gallery images with variant filter for each unit_of_sale
+            lifestyle_counter = 0
             for img_url in gallery_images:
                 cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
                 if cleaned_url:
                     lifestyle_counter += 1
-                    # Gallery alt: "Product Title - Lifestyle 1 #option1#option2"
-                    gallery_alt = generate_lifestyle_alt_tag(product_title, f"Lifestyle {lifestyle_counter}")
-                    if variant_filter:
-                        gallery_alt = f"{gallery_alt} {variant_filter}"
+                    gallery_alt_base = generate_lifestyle_alt_tag(product_title, f"Lifestyle {lifestyle_counter}")
 
-                    images.append({
-                        "position": position,
-                        "src": cleaned_url,
-                        "alt": gallery_alt
-                    })
-                    position += 1
+                    # Create one image entry per unit_of_sale
+                    for unit in sorted_units:
+                        variant_filter = generate_variant_alt_tag(
+                            option1=color,
+                            option2=unit,
+                            option3="",
+                            option4=""
+                        )
+                        gallery_alt = f"{gallery_alt_base} {variant_filter}" if variant_filter else gallery_alt_base
 
-        # Deduplicate while preserving order
-        deduplicated = deduplicate_images(images)
+                        images.append({
+                            "position": position,
+                            "src": cleaned_url,
+                            "alt": gallery_alt
+                        })
+                        position += 1
 
-        # Renumber positions after deduplication
-        for i, img in enumerate(deduplicated, 1):
-            img["position"] = i
+            # Only process first color record (images are shared across colors)
+            break
 
-        return deduplicated
+        # Note: We do NOT deduplicate images here because the same physical image
+        # needs to appear multiple times with different alt tags (one per variant)
+        # for Shopify's gallery filtering to work correctly.
+
+        # Positions are already set correctly during image generation
+        return images
 
     def _generate_metafields(self, public_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
