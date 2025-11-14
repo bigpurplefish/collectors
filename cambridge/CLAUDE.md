@@ -125,17 +125,32 @@ images.extend(public_data["gallery_images"])
 
 **CRITICAL:** This project MUST comply with ALL shared-docs requirements.
 
-#### Before Writing Any Code
+#### Before Writing Any Code OR Answering Questions
 
-1. **Use Context7 for Current Library Documentation**
-   - ALWAYS fetch latest docs using Context7 MCP tools
-   - Use `mcp__context7__resolve-library-id` to find library
-   - Use `mcp__context7__get-library-docs` to get documentation
-   - Common libraries:
-     - Requests: `/psf/requests`
-     - BeautifulSoup: `/wention/beautifulsoup4`
-     - Playwright: `/microsoft/playwright-python`
-     - Pandas: `/pandas-dev/pandas`
+1. **ALWAYS Use Context7 for Current Library Documentation**
+
+   **CRITICAL:** Before writing code OR answering questions about any library, API, or framework, you MUST use Context7 to fetch the latest documentation.
+
+   **Why:** Documentation changes frequently. Context7 provides up-to-date information from official sources, preventing outdated or incorrect guidance.
+
+   **Process:**
+   1. Use `mcp__context7__resolve-library-id` to find the library
+   2. Use `mcp__context7__get-library-docs` to fetch current documentation
+   3. Use the documentation to inform your code or answer
+
+   **Common libraries:**
+   - Shopify API: `/websites/shopify_dev`
+   - Requests: `/psf/requests`
+   - BeautifulSoup: `/wention/beautifulsoup4`
+   - Playwright: `/microsoft/playwright-python`
+   - Pandas: `/pandas-dev/pandas`
+
+   **When to use:**
+   - ✅ Before implementing any API integration
+   - ✅ When answering questions about how libraries work
+   - ✅ When debugging API-related issues
+   - ✅ When checking field names, types, or requirements
+   - ✅ When explaining how to use any external library
 
 2. **Review All Shared Requirements**
    - **Project Structure**: `/Users/moosemarketer/Code/shared-docs/python/PROJECT_STRUCTURE_REQUIREMENTS.md`
@@ -175,12 +190,12 @@ images.extend(public_data["gallery_images"])
      - API integration standards
 
 3. **Review Collector-Specific Requirements**
-   - **Input Structure**: `/Users/moosemarketer/Code/garoppos/collectors/shared-docs/INPUT_FILE_STRUCTURE.md`
+   - **Input Structure**: `/Users/moosemarketer/Code/garoppos/shared-docs/INPUT_FILE_STRUCTURE.md`
      - Required fields (item_#, description_1, size, upc_updated, etc.)
      - Variant support fields (parent, option_1-4, color)
      - Data type specifications
 
-   - **UPCItemDB Fallback**: `/Users/moosemarketer/Code/garoppos/collectors/shared-docs/UPCITEMDB_FALLBACK_REQUIREMENTS.md`
+   - **UPCItemDB Fallback**: `/Users/moosemarketer/Code/garoppos/shared-docs/UPCITEMDB_FALLBACK_REQUIREMENTS.md`
      - Image quality assessment (Laplacian variance)
      - Placeholder detection (perceptual hashing)
      - Fallback decision flow

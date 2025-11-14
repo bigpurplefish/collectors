@@ -170,17 +170,18 @@ class CambridgePortalParser:
         Returns:
             Dictionary with extracted data:
             - gallery_images: List of product image URLs
-            - weight: Item weight
-            - sales_unit: Sales unit / unit of sale
+            - weight: Item weight (for cube unit)
             - cost: Product cost/price
             - model_number: Vendor SKU / model number
+
+            Note: sales_unit is no longer extracted from portal - it comes from input file
         """
         soup = BeautifulSoup(html, "lxml")
 
         result = {
             "gallery_images": self._extract_gallery_images(soup, log),
             "weight": self._extract_weight(soup, log),
-            "sales_unit": self._extract_sales_unit(soup, log),
+            # sales_unit extraction removed - now sourced from input file
             "cost": self._extract_cost(soup, log),
             "model_number": self._extract_model_number(soup, log),
         }

@@ -157,7 +157,7 @@ class CambridgeProductGenerator:
 
         Args:
             variant_records: List of variant records
-            portal_data_by_color: Portal data indexed by color
+            portal_data_by_color: Portal data indexed by color (not used for unit_of_sale anymore)
 
         Returns:
             List of option dictionaries
@@ -178,19 +178,42 @@ class CambridgeProductGenerator:
                 "values": colors
             })
 
-        # Option 2: Unit of Sale (if available)
+        # Option 2: Unit of Sale (from input records)
+        # Order: sq ft, kit, cube, piece, layer, band
+        unit_order = ["Sq Ft", "Kit", "Cube", "Piece", "Layer", "Band"]
         sales_units = []
-        for color, portal_data in portal_data_by_color.items():
-            sales_unit = portal_data.get("sales_unit", "").strip()
-            if sales_unit and sales_unit not in sales_units:
-                sales_units.append(sales_unit)
 
-        if sales_units:
-            # Always add as option when present, even if only one value
+        # Check which units have cost/price data across all records
+        for record in variant_records:
+            import math
+            # Check each unit type in order
+            if not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
+                if "Sq Ft" not in sales_units:
+                    sales_units.append("Sq Ft")
+            if not math.isnan(record.get("cost_per_kit", float('nan'))) and not math.isnan(record.get("price_per_kit", float('nan'))):
+                if "Kit" not in sales_units:
+                    sales_units.append("Kit")
+            if not math.isnan(record.get("cost_per_cube", float('nan'))) and not math.isnan(record.get("price_per_cube", float('nan'))):
+                if "Cube" not in sales_units:
+                    sales_units.append("Cube")
+            if not math.isnan(record.get("cost_per_piece", float('nan'))) and not math.isnan(record.get("price_per_piece", float('nan'))):
+                if "Piece" not in sales_units:
+                    sales_units.append("Piece")
+            if not math.isnan(record.get("cost_per_layer", float('nan'))) and not math.isnan(record.get("price_per_layer", float('nan'))):
+                if "Layer" not in sales_units:
+                    sales_units.append("Layer")
+            if not math.isnan(record.get("cost_per_band", float('nan'))) and not math.isnan(record.get("price_per_band", float('nan'))):
+                if "Band" not in sales_units:
+                    sales_units.append("Band")
+
+        # Maintain the specified order
+        ordered_units = [unit for unit in unit_order if unit in sales_units]
+
+        if ordered_units:
             options.append({
                 "name": "Unit of Sale",
                 "position": 2,
-                "values": sales_units
+                "values": ordered_units
             })
 
         return options
@@ -204,120 +227,173 @@ class CambridgeProductGenerator:
         """
         Generate Shopify variants from variant records.
 
+        Creates multiple variants per color based on available unit_of_sale types
+        from input file (sq ft, kit, cube, piece, layer, band).
+
         Args:
-            variant_records: List of variant records
+            variant_records: List of variant records (one per color)
             portal_data_by_color: Portal data indexed by color
             product_title: Product title for logging
 
         Returns:
             List of variant dictionaries
         """
+        import math
         variants = []
+        variant_position = 1
 
-        for i, record in enumerate(variant_records):
+        # Process each color
+        for record in variant_records:
             color = record.get("color", "").strip()
             portal_data = portal_data_by_color.get(color, {})
 
-            # Extract data from input record
-            item_number = record.get("item_#", "")
-            price = record.get("price", "")  # From input file
-            cost = record.get("cost", "")    # From input file
-
-            # Extract data from portal
-            weight_info = portal_data.get("weight", "")
-            sales_unit = portal_data.get("sales_unit", "")
+            # Extract common data
+            base_item_number = str(record.get("item_#", ""))
             model_number = portal_data.get("model_number", "")
+            gallery_images = portal_data.get("gallery_images", [])
 
-            # Parse weight into value and unit
-            weight_value, weight_unit = self._parse_weight(weight_info)
+            # Get cube weight from portal (base weight for conversions)
+            weight_info = portal_data.get("weight", "")
+            cube_weight_value, weight_unit = self._parse_weight(weight_info)
 
-            # Generate SKU (Cambridge products don't have SKUs)
-            sku = self.sku_generator.generate_unique_sku()
+            # Get conversion factors
+            sq_ft_per_cube = record.get("sq_ft_per_cube", 0) or 0
+            pieces_per_cube = record.get("pieces_per_cube", 0) or 0
+            mid_units_per_cube = record.get("mid_units_per_cube", 0) or 0
 
-            # Check if sales_unit should be included as option2
-            all_sales_units = set()
-            for pd in portal_data_by_color.values():
-                su = pd.get("sales_unit", "").strip()
-                if su:
-                    all_sales_units.add(su)
+            # Define unit types in order: sq ft, kit, cube, piece, layer, band
+            unit_configs = [
+                {
+                    "name": "Sq Ft",
+                    "cost_key": "sq_ft_cost",
+                    "price_key": "sq_ft_price",
+                    "conversion_factor": sq_ft_per_cube,
+                    "conversion_name": "sq_ft_per_cube"
+                },
+                {
+                    "name": "Kit",
+                    "cost_key": "cost_per_kit",
+                    "price_key": "price_per_kit",
+                    "conversion_factor": None,  # Kit doesn't have weight calculation
+                    "conversion_name": None
+                },
+                {
+                    "name": "Cube",
+                    "cost_key": "cost_per_cube",
+                    "price_key": "price_per_cube",
+                    "conversion_factor": 1,  # Cube is the base unit
+                    "conversion_name": None
+                },
+                {
+                    "name": "Piece",
+                    "cost_key": "cost_per_piece",
+                    "price_key": "price_per_piece",
+                    "conversion_factor": pieces_per_cube,
+                    "conversion_name": "pieces_per_cube"
+                },
+                {
+                    "name": "Layer",
+                    "cost_key": "cost_per_layer",
+                    "price_key": "price_per_layer",
+                    "conversion_factor": mid_units_per_cube if record.get("mid_unit_name", "").lower() == "layer" else None,
+                    "conversion_name": "mid_units_per_cube (layer)"
+                },
+                {
+                    "name": "Band",
+                    "cost_key": "cost_per_band",
+                    "price_key": "price_per_band",
+                    "conversion_factor": mid_units_per_cube if record.get("mid_unit_name", "").lower() == "band" else None,
+                    "conversion_name": "mid_units_per_cube (band)"
+                }
+            ]
 
-            # Build variant with option keys grouped at top for readability
-            variant = {
-                "sku": sku,
-                "price": str(price) if price else "0.00",
-                "cost": str(cost) if cost else "",
-                "barcode": sku,  # Use generated SKU as barcode
-                "inventory_quantity": 0,
-                "position": i + 1,
-                "option1": color,
-                "inventory_policy": "deny",
-                "compare_at_price": None,
-                "fulfillment_service": "manual",
-                "inventory_management": "shopify",
-                "taxable": True,
-                "grams": int(weight_value * 453.592) if weight_value and weight_unit == "lb" else 0,  # Convert lbs to grams
-                "weight": weight_value if weight_value else 0,
-                "weight_unit": weight_unit if weight_unit else "lb",
-                "requires_shipping": True,
-                "image_id": None,  # Set later based on color-specific images
-                "metafields": []
-            }
+            # Iterator for item number suffix
+            unit_iterator = 1
 
-            # Add option2 immediately after option1 if sales_unit exists
-            if all_sales_units and sales_unit:
-                # Insert option2 right after option1 for better readability
-                # Need to rebuild variant dict with proper ordering
+            # Create variants for each unit type that has cost/price data
+            for unit_config in unit_configs:
+                cost = record.get(unit_config["cost_key"], float('nan'))
+                price = record.get(unit_config["price_key"], float('nan'))
+
+                # Skip if no cost/price data
+                if math.isnan(cost) or math.isnan(price):
+                    continue
+
+                # Validate conversion factor exists (except for Kit which doesn't need weight)
+                if unit_config["name"] != "Kit" and unit_config["conversion_factor"] is not None:
+                    if unit_config["conversion_factor"] == 0:
+                        raise ValueError(
+                            f"Product '{product_title}' color '{color}' has {unit_config['name']} cost/price data "
+                            f"but {unit_config['conversion_name']} is zero or missing. Cannot calculate weight."
+                        )
+
+                # Calculate weight
+                if unit_config["name"] == "Kit":
+                    # Kit doesn't have weight calculation
+                    weight_value = 0
+                    grams = 0
+                elif unit_config["conversion_factor"] is not None and cube_weight_value:
+                    weight_value = cube_weight_value / unit_config["conversion_factor"]
+                    grams = int(weight_value * 453.592) if weight_unit == "lb" else 0
+                else:
+                    weight_value = 0
+                    grams = 0
+
+                # Generate SKU
+                sku = self.sku_generator.generate_unique_sku()
+
+                # Build variant with option keys grouped
                 variant = {
-                    "sku": variant["sku"],
-                    "price": variant["price"],
-                    "cost": variant["cost"],
-                    "barcode": variant["barcode"],
-                    "inventory_quantity": variant["inventory_quantity"],
-                    "position": variant["position"],
-                    "option1": variant["option1"],
-                    "option2": sales_unit,  # Add option2 right after option1
-                    "inventory_policy": variant["inventory_policy"],
-                    "compare_at_price": variant["compare_at_price"],
-                    "fulfillment_service": variant["fulfillment_service"],
-                    "inventory_management": variant["inventory_management"],
-                    "taxable": variant["taxable"],
-                    "grams": variant["grams"],
-                    "weight": variant["weight"],
-                    "weight_unit": variant["weight_unit"],
-                    "requires_shipping": variant["requires_shipping"],
-                    "image_id": variant["image_id"],
-                    "metafields": variant["metafields"]
+                    "sku": sku,
+                    "price": str(price),
+                    "cost": str(cost),
+                    "barcode": f"{base_item_number}-{unit_iterator}",
+                    "inventory_quantity": 0,
+                    "position": variant_position,
+                    "option1": color,
+                    "option2": unit_config["name"],
+                    "inventory_policy": "deny",
+                    "compare_at_price": None,
+                    "fulfillment_service": "manual",
+                    "inventory_management": "shopify",
+                    "taxable": True,
+                    "grams": grams,
+                    "weight": weight_value,
+                    "weight_unit": weight_unit if weight_unit else "lb",
+                    "requires_shipping": True,
+                    "image_id": None,
+                    "metafields": []
                 }
 
-            # Add color_swatch_image metafield (first portal gallery image)
-            gallery_images = portal_data.get("gallery_images", [])
-            if gallery_images:
-                variant["metafields"].append({
-                    "namespace": "custom",
-                    "key": "color_swatch_image",
-                    "value": gallery_images[0],
-                    "type": "single_line_text_field"
-                })
+                # Add color_swatch_image metafield (first portal gallery image)
+                if gallery_images:
+                    variant["metafields"].append({
+                        "namespace": "custom",
+                        "key": "color_swatch_image",
+                        "value": gallery_images[0],
+                        "type": "single_line_text_field"
+                    })
 
-            # Add model number metafield if present
-            if model_number:
-                variant["metafields"].append({
-                    "namespace": "custom",
-                    "key": "model_number",
-                    "value": model_number,
-                    "type": "single_line_text_field"
-                })
+                # Add model number metafield if present
+                if model_number:
+                    variant["metafields"].append({
+                        "namespace": "custom",
+                        "key": "model_number",
+                        "value": model_number,
+                        "type": "single_line_text_field"
+                    })
 
-            # Add sales_unit metafield if present
-            if sales_unit:
+                # Add unit_of_sale metafield
                 variant["metafields"].append({
                     "namespace": "custom",
                     "key": "unit_of_sale",
-                    "value": sales_unit,
+                    "value": unit_config["name"],
                     "type": "single_line_text_field"
                 })
 
-            variants.append(variant)
+                variants.append(variant)
+                variant_position += 1
+                unit_iterator += 1
 
         return variants
 
