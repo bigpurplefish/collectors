@@ -480,10 +480,13 @@ class CambridgeProductGenerator:
 
         # Step 1: Collect and deduplicate all unique image URLs (case-insensitive)
         # Format: [(url, type, color, counter)]
+        # Note: Portal images are deduplicated PER COLOR (each color has unique images)
+        # Public images (hero/gallery) are deduplicated GLOBALLY (shared across all colors)
         unique_images = []
         seen_urls = set()  # Track lowercase URLs to detect duplicates
 
         # Phase 1: Collect portal images (all colors)
+        # Deduplicate within each color only (not across colors)
         portal_img_counter = {}
         for color, portal_data in portal_data_by_color.items():
             gallery_images = portal_data.get("gallery_images", [])
@@ -491,12 +494,17 @@ class CambridgeProductGenerator:
             if color not in portal_img_counter:
                 portal_img_counter[color] = 0
 
+            # Track URLs seen for THIS color only
+            color_seen_urls = set()
+
             for img_url in gallery_images:
                 cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
                 if cleaned_url:
                     url_lower = cleaned_url.lower()
-                    if url_lower not in seen_urls:
-                        seen_urls.add(url_lower)
+                    # Only deduplicate within same color
+                    if url_lower not in color_seen_urls:
+                        color_seen_urls.add(url_lower)
+                        seen_urls.add(url_lower)  # Add to global for public image deduplication
                         portal_img_counter[color] += 1
                         unique_images.append({
                             "url": cleaned_url,
@@ -537,23 +545,24 @@ class CambridgeProductGenerator:
                         "counter": lifestyle_counter
                     })
 
-        # Step 2: Create variant entries for each unique image
-        for img_info in unique_images:
-            img_url = img_info["url"]
-            img_type = img_info["type"]
-            color = img_info["color"]
-            counter = img_info["counter"]
+        # Step 2: Create variant entries grouped by variant (easier for human review)
+        # Group all images for each variant together in gallery order
+        for unit in sorted_units:
+            for img_info in unique_images:
+                img_url = img_info["url"]
+                img_type = img_info["type"]
+                color = img_info["color"]
+                counter = img_info["counter"]
 
-            # Generate base alt tag based on image type
-            if img_type == "portal":
-                alt_base = f"{product_title} - Product Image {counter}"
-            elif img_type == "hero":
-                alt_base = generate_lifestyle_alt_tag(product_title, "Hero")
-            else:  # lifestyle
-                alt_base = generate_lifestyle_alt_tag(product_title, f"Lifestyle {counter}")
+                # Generate base alt tag based on image type
+                if img_type == "portal":
+                    alt_base = f"{product_title} - Product Image {counter}"
+                elif img_type == "hero":
+                    alt_base = generate_lifestyle_alt_tag(product_title, "Hero")
+                else:  # lifestyle
+                    alt_base = generate_lifestyle_alt_tag(product_title, f"Lifestyle {counter}")
 
-            # Create one image entry per unit_of_sale
-            for unit in sorted_units:
+                # Create variant filter for this unit_of_sale
                 variant_filter = generate_variant_alt_tag(
                     option1=color,
                     option2=unit,
