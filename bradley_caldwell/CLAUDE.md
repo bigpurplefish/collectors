@@ -19,9 +19,33 @@ This is a **NON-NEGOTIABLE** requirement that applies to **EVERY** coding task, 
 
 ### Required Pre-Coding Checklist
 
-**Before generating ANY code**, you MUST:
+**Before generating ANY code OR answering questions**, you MUST:
 
-1. **Check Context7** for up-to-date library documentation (use context7 MCP tool)
+1. **ALWAYS Use Context7 for Current Library Documentation**
+
+   **CRITICAL:** Before writing code OR answering questions about any library, API, or framework, you MUST use Context7 to fetch the latest documentation.
+
+   **Why:** Documentation changes frequently. Context7 provides up-to-date information from official sources, preventing outdated or incorrect guidance.
+
+   **Process:**
+   1. Use `mcp__context7__resolve-library-id` to find the library
+   2. Use `mcp__context7__get-library-docs` to fetch current documentation
+   3. Use the documentation to inform your code or answer
+
+   **Common libraries:**
+   - Shopify API: `/websites/shopify_dev`
+   - Requests: `/psf/requests`
+   - BeautifulSoup: `/wention/beautifulsoup4`
+   - Playwright: `/microsoft/playwright-python`
+   - Pandas: `/pandas-dev/pandas`
+
+   **When to use:**
+   - ✅ Before implementing any API integration
+   - ✅ When answering questions about how libraries work
+   - ✅ When debugging API-related issues
+   - ✅ When checking field names, types, or requirements
+   - ✅ When explaining how to use any external library
+
 2. **Read ALL applicable shared-docs requirements**:
    - @~/Code/shared-docs/python/PROJECT_STRUCTURE_REQUIREMENTS.md - Project layout, dual entry points, README maintenance
    - @~/Code/shared-docs/python/GUI_DESIGN_REQUIREMENTS.md - GUI patterns, threading, StringVar vs IntVar
@@ -30,7 +54,7 @@ This is a **NON-NEGOTIABLE** requirement that applies to **EVERY** coding task, 
    - @~/Code/shared-docs/python/TECHNICAL_DOCS.md - General Python standards
 3. **Read collector-specific shared docs**:
    - @~/Code/Python/collectors/shared/docs/README.md - Shared utility documentation
-4. **Combine external + internal standards**: Both Context7 patterns AND our requirements must be met
+4. **Combine external + internal standards**: Both latest library documentation (from Context7) AND our internal requirements must be met
 
 ### Key Requirements to Remember
 

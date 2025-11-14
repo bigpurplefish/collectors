@@ -34,6 +34,7 @@ class CambridgePortalParser:
         self.password = config.get("portal_password", "")
 
         # Browser state
+        self._playwright = None
         self._browser: Optional[Browser] = None
         self._page: Optional[Page] = None
         self._logged_in = False
@@ -64,8 +65,8 @@ class CambridgePortalParser:
 
         try:
             # Start Playwright
-            playwright = sync_playwright().start()
-            self._browser = playwright.chromium.launch(headless=True)
+            self._playwright = sync_playwright().start()
+            self._browser = self._playwright.chromium.launch(headless=True)
             context = self._browser.new_context(
                 user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
             )
@@ -387,5 +388,8 @@ class CambridgePortalParser:
         if self._browser:
             self._browser.close()
             self._browser = None
+        if self._playwright:
+            self._playwright.stop()
+            self._playwright = None
         self._page = None
         self._logged_in = False
