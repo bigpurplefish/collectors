@@ -295,14 +295,14 @@ class CambridgeProductGenerator:
                     "name": "Layer",
                     "cost_key": "cost_per_layer",
                     "price_key": "price_per_layer",
-                    "conversion_factor": mid_units_per_cube if record.get("mid_unit_name", "").lower() == "layer" else None,
+                    "conversion_factor": mid_units_per_cube if isinstance(record.get("mid_unit_name"), str) and record.get("mid_unit_name", "").lower() == "layer" else None,
                     "conversion_name": "mid_units_per_cube (layer)"
                 },
                 {
                     "name": "Band",
                     "cost_key": "cost_per_band",
                     "price_key": "price_per_band",
-                    "conversion_factor": mid_units_per_cube if record.get("mid_unit_name", "").lower() == "band" else None,
+                    "conversion_factor": mid_units_per_cube if isinstance(record.get("mid_unit_name"), str) and record.get("mid_unit_name", "").lower() == "band" else None,
                     "conversion_name": "mid_units_per_cube (band)"
                 }
             ]
@@ -330,7 +330,11 @@ class CambridgeProductGenerator:
                 # Calculate weight
                 if unit_config["conversion_factor"] is not None and cube_weight_value:
                     weight_value = cube_weight_value / unit_config["conversion_factor"]
-                    grams = int(weight_value * 453.592) if weight_unit == "lb" else 0
+                    # Check if weight_value is NaN before converting to int
+                    if math.isnan(weight_value):
+                        grams = 0
+                    else:
+                        grams = int(weight_value * 453.592) if weight_unit == "lb" else 0
                 else:
                     weight_value = 0
                     grams = 0
