@@ -250,10 +250,13 @@ class CambridgeCollector:
 
             # Extract ALL gallery images using Playwright (opens lightbox)
             # This gets all 20 images instead of just the 10 in the HTML
+            # Share portal parser's browser instance to avoid asyncio conflicts
             log(f"  Extracting gallery images via Playwright lightbox...")
+            shared_browser = self.portal_parser._browser if hasattr(self.portal_parser, '_browser') else None
             gallery_playwright = self.public_parser.extract_gallery_images_with_playwright(
                 product_url,
-                log
+                log,
+                shared_browser=shared_browser
             )
 
             # Use Playwright images if available, otherwise fall back to HTML parsing

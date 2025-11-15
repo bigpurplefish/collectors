@@ -118,7 +118,8 @@ class CambridgePublicParser:
     def extract_gallery_images_with_playwright(
         self,
         product_url: str,
-        log: Callable = print
+        log: Callable = print,
+        shared_browser = None
     ) -> List[str]:
         """
         Extract ALL gallery images by opening the lightbox with Playwright.
@@ -130,82 +131,96 @@ class CambridgePublicParser:
         Args:
             product_url: Full product URL to visit
             log: Logging function
+            shared_browser: Optional shared Playwright browser instance (avoids asyncio conflicts)
 
         Returns:
             List of all gallery image URLs from lightbox
         """
         gallery_urls = []
+        playwright_instance = None
 
         try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True)
+            # Use shared browser if provided, otherwise create new instance
+            if shared_browser:
+                browser = shared_browser
                 page = browser.new_page()
+                should_close_browser = False
+            else:
+                playwright_instance = sync_playwright().start()
+                browser = playwright_instance.chromium.launch(headless=True)
+                page = browser.new_page()
+                should_close_browser = True
 
-                # Navigate to product page
-                log(f"    Navigating to {product_url}")
-                page.goto(product_url, wait_until="networkidle", timeout=30000)
-                time.sleep(2)
+            # Navigate to product page
+            log(f"    Navigating to {product_url}")
+            page.goto(product_url, wait_until="networkidle", timeout=30000)
+            time.sleep(2)
 
-                # Find and click the first gallery image to open lightbox
-                try:
-                    first_image = page.locator("a.popup-img").first
-                    image_count = first_image.count()
-                    log(f"    Found {image_count} popup-img links")
+            # Find and click the first gallery image to open lightbox
+            try:
+                first_image = page.locator("a.popup-img").first
+                image_count = first_image.count()
+                log(f"    Found {image_count} popup-img links")
 
-                    if image_count > 0:
-                        log(f"    Clicking first image to open lightbox...")
-                        # Use JavaScript click since element might be outside viewport
-                        page.evaluate("document.querySelector('a.popup-img').click()")
-                        time.sleep(1)
+                if image_count > 0:
+                    log(f"    Clicking first image to open lightbox...")
+                    # Use JavaScript click since element might be outside viewport
+                    page.evaluate("document.querySelector('a.popup-img').click()")
+                    time.sleep(1)
 
-                        # Wait for lightbox to appear
-                        log(f"    Waiting for lightbox...")
-                        page.wait_for_selector(".mfp-img", timeout=5000)
+                    # Wait for lightbox to appear
+                    log(f"    Waiting for lightbox...")
+                    page.wait_for_selector(".mfp-img", timeout=5000)
 
-                        # Extract total image count from counter
-                        counter = page.locator(".mfp-counter").text_content()
-                        log(f"    Lightbox counter: {counter}")
+                    # Extract total image count from counter
+                    counter = page.locator(".mfp-counter").text_content()
+                    log(f"    Lightbox counter: {counter}")
 
-                        # Counter format: "1 of 20"
-                        if " of " in counter:
-                            total_images = int(counter.split(" of ")[1])
-                        else:
-                            total_images = 10  # Fallback
-
-                        log(f"    Extracting {total_images} images from lightbox...")
-
-                        # Collect all image URLs by clicking through lightbox
-                        for i in range(total_images):
-                            # Get current image URL
-                            img_element = page.locator(".mfp-img")
-                            if img_element.count() > 0:
-                                src = img_element.get_attribute("src")
-                                if src:
-                                    url = self._normalize_image_url(src)
-                                    # Don't skip duplicates - track all positions
-                                    gallery_urls.append(url)
-                                    log(f"      Position {i+1}: {url}")
-
-                            # Click next arrow (if not last image)
-                            if i < total_images - 1:
-                                next_button = page.locator(".mfp-arrow-right")
-                                if next_button.count() > 0:
-                                    next_button.click()
-                                    time.sleep(0.5)
-
-                        # Deduplicate while preserving order
-                        original_count = len(gallery_urls)
-                        gallery_urls = list(dict.fromkeys(gallery_urls))  # Remove duplicates, preserve order
-                        if original_count > len(gallery_urls):
-                            log(f"    Removed {original_count - len(gallery_urls)} duplicates")
+                    # Counter format: "1 of 20"
+                    if " of " in counter:
+                        total_images = int(counter.split(" of ")[1])
                     else:
-                        log(f"    No popup-img links found, skipping lightbox extraction")
+                        total_images = 10  # Fallback
 
-                except PlaywrightTimeoutError as e:
-                    # Lightbox didn't open, fall back to HTML parsing
-                    log(f"    Lightbox timeout: {e}")
+                    log(f"    Extracting {total_images} images from lightbox...")
 
+                    # Collect all image URLs by clicking through lightbox
+                    for i in range(total_images):
+                        # Get current image URL
+                        img_element = page.locator(".mfp-img")
+                        if img_element.count() > 0:
+                            src = img_element.get_attribute("src")
+                            if src:
+                                url = self._normalize_image_url(src)
+                                # Don't skip duplicates - track all positions
+                                gallery_urls.append(url)
+                                log(f"      Position {i+1}: {url}")
+
+                        # Click next arrow (if not last image)
+                        if i < total_images - 1:
+                            next_button = page.locator(".mfp-arrow-right")
+                            if next_button.count() > 0:
+                                next_button.click()
+                                time.sleep(0.5)
+
+                    # Deduplicate while preserving order
+                    original_count = len(gallery_urls)
+                    gallery_urls = list(dict.fromkeys(gallery_urls))  # Remove duplicates, preserve order
+                    if original_count > len(gallery_urls):
+                        log(f"    Removed {original_count - len(gallery_urls)} duplicates")
+                else:
+                    log(f"    No popup-img links found, skipping lightbox extraction")
+
+            except PlaywrightTimeoutError as e:
+                # Lightbox didn't open, fall back to HTML parsing
+                log(f"    Lightbox timeout: {e}")
+
+            # Close page (always) and browser (only if we created it)
+            page.close()
+            if should_close_browser:
                 browser.close()
+                if playwright_instance:
+                    playwright_instance.stop()
 
         except Exception as e:
             # If Playwright fails, return empty list (caller will fall back to HTML parsing)
