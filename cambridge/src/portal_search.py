@@ -119,17 +119,9 @@ class CambridgePortalSearcher:
         Returns:
             Product dictionary or None if not found
         """
-        if not self.index:
-            log_error(log, "Portal index not loaded", details="Portal index must be loaded before searching")
-            return None
-
-        products = self.index.get("products", [])
-        if not products:
-            log_error(log, "Portal index is empty", details="No portal products available for matching")
-            return None
-
         # URL overrides for specific products with incorrect portal index URLs
         # These products were matched to category pages instead of product pages
+        # Check overrides FIRST, before checking index status
         url_overrides = {
             ("Sherwood Ledgestone 3-Pc. Design Kit", "Platinum"): "/product/20784",
             ("Sherwood Ledgestone 3-Pc. Design Kit Smooth", "Platinum"): "/product/20785",
@@ -150,6 +142,16 @@ class CambridgePortalSearcher:
                 "category": "",
                 "is_override": True
             }
+
+        # If no override, check portal index
+        if not self.index:
+            log_error(log, "Portal index not loaded", details="Portal index must be loaded before searching")
+            return None
+
+        products = self.index.get("products", [])
+        if not products:
+            log_error(log, "Portal index is empty", details="No portal products available for matching")
+            return None
 
         # Normalize color for matching (replace "/" with space, handle variations)
         normalized_color = color.replace("/", " ").strip()
