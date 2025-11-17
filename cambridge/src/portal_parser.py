@@ -212,40 +212,63 @@ class CambridgePortalParser:
             # Wait for gallery to load - specific selector for bxSlider
             try:
                 self._page.wait_for_selector(".bx-viewport ul.bxslider li img", timeout=5000)
+                has_carousel = True
             except:
+                has_carousel = False
+
+            if has_carousel:
+                # Extract gallery images from bxSlider carousel
+                # Selector: .bx-viewport ul.bxslider li img (excluding clones)
+                gallery_images = self._page.query_selector_all(".bx-viewport ul.bxslider li:not(.bx-clone) img")
+
+                if gallery_images:
+                    # Extract src attributes in order
+                    for img in gallery_images:
+                        src = img.get_attribute("src")
+                        if src:
+                            # Skip thumbnails (resizeid=4), we want full images (resizeid=5)
+                            if "resizeid=4" in src:
+                                continue
+
+                            # Skip UI elements
+                            if any(skip in src.lower() for skip in ["icon", "logo", "button", "sprite"]):
+                                continue
+
+                            # Normalize URL and remove query params
+                            full_url = self._normalize_url(src)
+                            # Strip resize params to get base URL
+                            base_url = full_url.split("?")[0]
+
+                            if base_url and base_url not in images:
+                                images.append(base_url)
+
+                    log(f"  Found {len(images)} gallery images")
+                    return images
+
+            # Fallback: Try to get the main product image when no carousel found
+            try:
+                main_img = self._page.query_selector(".product-details-image-gallery-detailed-image img.center-block")
+                if main_img:
+                    src = main_img.get_attribute("src")
+                    if src:
+                        # Skip UI elements
+                        if not any(skip in src.lower() for skip in ["icon", "logo", "button", "sprite"]):
+                            # Normalize URL and remove query params
+                            full_url = self._normalize_url(src)
+                            # Strip resize params to get base URL
+                            base_url = full_url.split("?")[0]
+
+                            if base_url:
+                                images.append(base_url)
+                                log(f"  Found 1 main product image (no carousel)")
+                                return images
+
                 log("  ⚠ Gallery images not found")
                 return images
 
-            # Extract gallery images from bxSlider carousel
-            # Selector: .bx-viewport ul.bxslider li img (excluding clones)
-            gallery_images = self._page.query_selector_all(".bx-viewport ul.bxslider li:not(.bx-clone) img")
-
-            if not gallery_images:
-                log("  ⚠ No gallery images found in carousel")
+            except Exception as e:
+                log(f"  ⚠ No main product image found: {e}")
                 return images
-
-            # Extract src attributes in order
-            for img in gallery_images:
-                src = img.get_attribute("src")
-                if src:
-                    # Skip thumbnails (resizeid=4), we want full images (resizeid=5)
-                    if "resizeid=4" in src:
-                        continue
-
-                    # Skip UI elements
-                    if any(skip in src.lower() for skip in ["icon", "logo", "button", "sprite"]):
-                        continue
-
-                    # Normalize URL and remove query params
-                    full_url = self._normalize_url(src)
-                    # Strip resize params to get base URL
-                    base_url = full_url.split("?")[0]
-
-                    if base_url and base_url not in images:
-                        images.append(base_url)
-
-            log(f"  Found {len(images)} gallery images")
-            return images
 
         except Exception as e:
             log(f"  ⚠ Error extracting gallery images: {e}")
@@ -253,30 +276,43 @@ class CambridgePortalParser:
 
     def _extract_weight(self, soup: BeautifulSoup, log: Callable) -> str:
         """
-        Extract item weight from custom PDP fields.
+        Extract item weight from custom PDP fields using Playwright.
 
         Args:
-            soup: BeautifulSoup object
+            soup: BeautifulSoup object (not used, kept for compatibility)
             log: Logging function
 
         Returns:
             Weight string or empty string
         """
-        # Look for "ITEM WEIGHT:" in custom PDP fields
-        # Format: <span class="custom-pdp-fields-label">ITEM WEIGHT: 3078 lb</span>
-        for span in soup.find_all("span", class_="custom-pdp-fields-label"):
-            text = span.get_text(strip=True)
-            if "ITEM WEIGHT:" in text.upper():
-                # Extract the weight value after the label
-                # Format: "ITEM WEIGHT: 3078 lb"
-                match = re.search(r"ITEM WEIGHT:\s*(\d+(?:\.\d+)?)\s*(lb|lbs|kg|kgs|oz)", text, re.IGNORECASE)
-                if match:
-                    weight = f"{match.group(1)} {match.group(2)}"
-                    log(f"  Found weight: {weight}")
-                    return weight
+        if not self._page:
+            log("  ❌ No Playwright page available")
+            return ""
 
-        log("  ⚠ Weight not found")
-        return ""
+        try:
+            # Wait for custom fields to load
+            self._page.wait_for_selector("span.custom-pdp-fields-label", timeout=5000)
+
+            # Get all custom field labels
+            field_labels = self._page.query_selector_all("span.custom-pdp-fields-label")
+
+            for label in field_labels:
+                text = label.text_content().strip()
+                if "ITEM WEIGHT:" in text.upper():
+                    # Extract the weight value after the label
+                    # Format: "ITEM WEIGHT: 3078 lb"
+                    match = re.search(r"ITEM WEIGHT:\s*(\d+(?:\.\d+)?)\s*(lb|lbs|kg|kgs|oz)", text, re.IGNORECASE)
+                    if match:
+                        weight = f"{match.group(1)} {match.group(2)}"
+                        log(f"  Found weight: {weight}")
+                        return weight
+
+            log("  ⚠ Weight not found")
+            return ""
+
+        except Exception as e:
+            log(f"  ⚠ Weight not found: {e}")
+            return ""
 
     def _extract_sales_unit(self, soup: BeautifulSoup, log: Callable) -> str:
         """
@@ -333,26 +369,38 @@ class CambridgePortalParser:
 
     def _extract_model_number(self, soup: BeautifulSoup, log: Callable) -> str:
         """
-        Extract vendor SKU / model number.
+        Extract vendor SKU / model number using Playwright.
 
         Args:
-            soup: BeautifulSoup object
+            soup: BeautifulSoup object (not used, kept for compatibility)
             log: Logging function
 
         Returns:
             Model number string or empty string
         """
-        # Look for SKU in product line SKU element
-        # Format: <span class="product-line-sku-value" itemprop="sku"> 11003310 </span>
-        sku_span = soup.find("span", class_="product-line-sku-value")
-        if sku_span:
-            value = sku_span.get_text(strip=True)
-            if value:
-                log(f"  Found model number: {value}")
-                return value
+        if not self._page:
+            log("  ❌ No Playwright page available")
+            return ""
 
-        log("  ⚠ Model number not found")
-        return ""
+        try:
+            # Wait for SKU element to load
+            self._page.wait_for_selector("span.product-line-sku-value", timeout=5000)
+
+            # Get SKU element
+            # Format: <span class="product-line-sku-value" itemprop="sku"> 11003310 </span>
+            sku_element = self._page.query_selector("span.product-line-sku-value")
+            if sku_element:
+                value = sku_element.text_content().strip()
+                if value:
+                    log(f"  Found model number: {value}")
+                    return value
+
+            log("  ⚠ Model number not found")
+            return ""
+
+        except Exception as e:
+            log(f"  ⚠ Model number not found: {e}")
+            return ""
 
     def _normalize_url(self, url: str) -> str:
         """

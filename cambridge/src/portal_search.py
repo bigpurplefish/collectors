@@ -128,6 +128,29 @@ class CambridgePortalSearcher:
             log_error(log, "Portal index is empty", details="No portal products available for matching")
             return None
 
+        # URL overrides for specific products with incorrect portal index URLs
+        # These products were matched to category pages instead of product pages
+        url_overrides = {
+            ("Sherwood Ledgestone 3-Pc. Design Kit", "Platinum"): "/product/20784",
+            ("Sherwood Ledgestone 3-Pc. Design Kit Smooth", "Platinum"): "/product/20785",
+        }
+
+        # Check if this product has a URL override
+        override_key = (title, color)
+        if override_key in url_overrides:
+            override_url = url_overrides[override_key]
+            log_success(
+                log,
+                f"Portal product match: '{title} {color}' (URL override)",
+                details=f"Using hardcoded URL override: {override_url}"
+            )
+            return {
+                "title": f"{title} {color}",
+                "url": override_url,
+                "category": "",
+                "is_override": True
+            }
+
         # Normalize color for matching (replace "/" with space, handle variations)
         normalized_color = color.replace("/", " ").strip()
 
