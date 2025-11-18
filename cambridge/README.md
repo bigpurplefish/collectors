@@ -26,6 +26,8 @@ The Cambridge collector:
 - ✅ Standard weight fields (value + unit)
 - ✅ Unit of sale as variant option
 - ✅ Cost and price from input file
+- ✅ Graceful error handling with detailed reporting
+- ✅ Data validation and missing field tracking
 
 ---
 
@@ -200,7 +202,10 @@ Paving Stones    | Sherwood Ledgestone 3-Pc. Kit   | STANDARD      | Driftwood  
 
 ## Output File Format
 
-The output is a JSON file containing Shopify products in GraphQL 2025-10 format:
+The collector generates two output files:
+
+### 1. Product Data File (`output.json`)
+Main JSON file containing Shopify products in GraphQL 2025-10 format:
 
 ```json
 {
@@ -242,6 +247,65 @@ The output is a JSON file containing Shopify products in GraphQL 2025-10 format:
 1. Product images from dealer portal (all colors)
 2. Hero image from public website
 3. Gallery images from public website
+
+### 2. Processing Report (`output_report.json`)
+Detailed report of processing results, failures, and warnings:
+
+```json
+{
+  "summary": {
+    "total_products": 100,
+    "successful": 95,
+    "skipped": 0,
+    "failed": 3,
+    "with_warnings": 2
+  },
+  "failures": [
+    {
+      "title": "Product Name",
+      "reason": "Product URL not found in public index",
+      "colors": ["Red", "Blue"],
+      "search_color": "Red",
+      "variant_count": 2
+    },
+    {
+      "title": "Another Product",
+      "reason": "Public data validation failed",
+      "missing_critical_fields": ["title"],
+      "missing_important_fields": ["description", "hero_image"],
+      "public_data_summary": {
+        "has_title": false,
+        "has_description": false,
+        "gallery_image_count": 0
+      }
+    }
+  ],
+  "warnings": [
+    {
+      "title": "Product with Partial Data",
+      "reason": "Product generated with incomplete portal data",
+      "portal_warnings": [
+        {
+          "color": "Red",
+          "missing_fields": ["model_number", "weight"],
+          "summary": {
+            "has_gallery_images": true,
+            "gallery_image_count": 3,
+            "has_cost": true,
+            "has_model_number": false,
+            "has_weight": false
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Report Details:**
+- **Failures**: Products that were skipped due to missing critical data
+- **Warnings**: Products that were processed but have missing portal data for some colors
+- **Summary**: Overall processing statistics
 
 ---
 
@@ -422,6 +486,75 @@ The SKU registry is stored at `/collectors/cache/sku_registry.json` (parent-leve
 
 ## Error Handling
 
+The collector implements **graceful error handling** that continues processing even when individual products fail. Products with missing critical data are skipped and tracked in a detailed report.
+
+### Data Validation
+
+The collector validates collected data and categorizes fields as:
+
+**Critical Fields (Public Data):**
+- `title` - Product must have a title to be processed
+
+**Important Fields (Public Data):**
+- `description` - Product description text
+- `hero_image` - Main product image
+- `gallery_images` - Lifestyle/gallery images
+
+**Important Fields (Portal Data):**
+- `gallery_images` - Product-specific images per color
+- `cost` - Product cost
+- `model_number` - Vendor SKU
+
+### Processing Behavior
+
+**When Product URL Not Found:**
+- Product is **skipped** (not included in output)
+- Logged as failure in report
+- Processing continues with next product
+
+**When Public Data Validation Fails:**
+- Product is **skipped** (not included in output)
+- Missing critical fields logged in report
+- Processing continues with next product
+
+**When Public Data Missing Important Fields:**
+- Warning logged but product is **still processed**
+- Missing fields tracked in console output
+- Product included in output with available data
+
+**When Portal Data Missing or Incomplete:**
+- Warning logged but product is **still processed**
+- Missing portal data tracked per color in warnings report
+- Product included in output with public data and partial portal data
+
+**When Exception Occurs:**
+- Product is **skipped** (not included in output)
+- Exception details logged in report
+- Processing continues with next product
+
+### Output Report
+
+After processing, a detailed report (`output_report.json`) is generated containing:
+
+1. **Summary Statistics**
+   - Total products processed
+   - Successful products
+   - Skipped products (already in output file)
+   - Failed products (missing critical data)
+   - Products with warnings (incomplete portal data)
+
+2. **Failures List**
+   - Products that were skipped
+   - Reason for failure
+   - Missing critical/important fields
+   - Data summary showing what was/wasn't collected
+
+3. **Warnings List**
+   - Products that were processed but have incomplete data
+   - Portal data issues per color
+   - Which specific fields are missing
+   - Summary of what portal data was collected
+
 ### Common Issues
 
 **Portal Login Fails:**
@@ -431,7 +564,8 @@ The SKU registry is stored at `/collectors/cache/sku_registry.json` (parent-leve
 
 **Product Not Found:**
 - Product may not exist on Cambridge website
-- Try rebuilding product index
+- Check processing report for specific failure reason
+- Try rebuilding product index: GUI checkbox or `"rebuild_index": true`
 - Check product title spelling in input file
 
 **Index Build Fails:**
@@ -439,13 +573,129 @@ The SKU registry is stored at `/collectors/cache/sku_registry.json` (parent-leve
 - Verify Cambridge website is accessible
 - Check logs for specific errors
 
+**Products Missing Portal Data:**
+- Check warnings section in processing report
+- Verify portal credentials are correct
+- Some colors may not be available in dealer portal
+- Products are still included in output with available data
+
 ### Logs
 
 Logs are written to the configured log file (default: `logs/cambridge.log`):
 - INFO: Processing progress
-- WARNING: Non-fatal issues
-- ERROR: Processing errors
+- WARNING: Non-fatal issues (missing important fields)
+- ERROR: Processing errors (validation failures)
 - EXCEPTION: Stack traces
+
+---
+
+## Failure Tracking and Reporting
+
+The collector now tracks both successful and failed products, generating comprehensive reports:
+
+### Automatic Failure Tracking
+
+When products fail to process, the collector:
+1. **Records failure details** to `output/cambridge_failures.json`
+2. **Logs the reason** (Product URL not found, data collection failed, etc.)
+3. **Saves color and variant information** for troubleshooting
+
+### Generating Comprehensive Reports
+
+Generate a complete report showing both failures and data quality issues:
+
+```bash
+python3 generate_comprehensive_report.py
+```
+
+This creates `output/comprehensive_report.md` with:
+
+**Section 1: Failed Products**
+- Products that couldn't be processed
+- Failure reasons (e.g., "Product URL not found in public index")
+- Color variants and search details
+- Troubleshooting recommendations
+
+**Section 2: Data Quality Issues**
+- Successfully processed products with missing data
+- **Each variant listed once** with all missing fields together
+- **Individual variant details** with SKU, color, and unit
+- **Missing fields highlighted** at the top of each variant entry
+- **Current values shown** only for missing fields
+- **Both public and portal URLs** for manual verification and troubleshooting
+- **Field count summary** showing how many variants are affected by each field type
+
+### Report Contents
+
+The comprehensive report includes:
+- **Total products attempted** (successful + failed)
+- **Processing summary** with counts
+- **Failed products grouped by failure reason**
+- **Consolidated variant list** - each variant appears once with all missing fields
+- **Field count summary** - shows how many variants are missing each field type
+- **Data quality details** for each variant with missing data
+- **Troubleshooting recommendations** for each issue type
+
+### Files Generated
+
+| File | Contents |
+|------|----------|
+| `output/cambridge.json` | Successfully processed products (Shopify format) |
+| `output/cambridge_failures.json` | Failed products with failure details |
+| `output/comprehensive_report.md` | Complete report (failures + data quality) |
+
+### Example Failure Report
+
+```markdown
+## SECTION 1: FAILED PRODUCTS
+
+### Failure Reason: Product URL not found in public index
+
+**Count**: 8 products
+
+#### Sherwood Brick Alley
+- **Variant Count**: 1
+- **Colors**: Brandywine
+- **Search Color**: Brandywine
+
+#### RoundTable 6 x 6
+- **Variant Count**: 1
+- **Colors**: Onyx
+- **Search Color**: Onyx
+```
+
+### Example Data Quality Report
+
+The report shows each variant once with all missing fields listed together:
+
+```markdown
+### 2.3. Variants with Missing Data
+
+#### Edgestone Plus
+
+**Total variants with missing data**: 4
+
+##### Variant 1: Toffee/Onyx Lite - Sq Ft
+
+- **SKU**: `56730`
+- **Color**: Toffee/Onyx Lite
+- **Unit of Sale**: Sq Ft
+- **Missing Fields**: `weight, model_number, color_swatch`
+- **Weight**: 0 (missing or zero)
+- **Model Number**: N/A (missing)
+- **Color Swatch**: N/A (missing)
+- **Public URL**: https://www.cambridgepavers.com/pavers-details?prodid=123
+- **Portal URL**: https://shop.cambridgepavers.com/pavers/edgestone-plus
+```
+
+**Key Features:**
+- **Each variant listed once** with all missing fields together
+- **SKU for easy identification** and reference
+- **Missing fields highlighted** at the top of each variant entry
+- **Current values displayed** for each missing field
+- **Both public and portal URLs** for manual verification
+- **Grouped by product** for easier navigation
+- **Field count summary** shows how many variants are affected by each field type
 
 ---
 

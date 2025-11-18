@@ -38,6 +38,7 @@ from utils.logging_utils import (
 
 from src.collector import CambridgeCollector
 from src.product_generator import CambridgeProductGenerator
+from src.data_validator import DataValidator
 
 
 def load_input_file(input_file: str, status_fn: Optional[Callable] = None) -> List[Dict[str, Any]]:
@@ -257,6 +258,8 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
 
         # Process each product family
         products = []
+        failures = []  # Track failed products with details
+        warnings = []  # Track products with warnings (missing portal data)
         success_count = 0
         skip_count = 0
         fail_count = 0
@@ -303,23 +306,54 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                         msg="Product URL not found",
                         details=f"Title: {title}, Color: {first_color}"
                     )
+                    failures.append({
+                        "title": title,
+                        "reason": "Product URL not found in public index",
+                        "colors": [v.get("color", "") for v in variant_records],
+                        "search_color": first_color,
+                        "variant_count": len(variant_records)
+                    })
                     fail_count += 1
                     continue
 
                 # Collect public website data
                 public_data = collector.collect_public_data(product_url, status_fn)
 
-                if not public_data:
+                # Validate public data
+                is_valid, missing_critical, missing_important = DataValidator.validate_public_data(public_data)
+                public_summary = DataValidator.get_public_data_summary(public_data)
+
+                if not is_valid:
                     log_error(
                         status_fn,
-                        msg="Failed to collect public data",
-                        details=f"Title: {title}, URL: {product_url}"
+                        msg="Public data validation failed - missing critical fields",
+                        details=f"Title: {title}, Missing critical: {', '.join(missing_critical)}, Missing important: {', '.join(missing_important)}"
                     )
+                    failures.append({
+                        "title": title,
+                        "reason": "Public data validation failed",
+                        "colors": [v.get("color", "") for v in variant_records],
+                        "search_color": first_color,
+                        "variant_count": len(variant_records),
+                        "product_url": product_url,
+                        "missing_critical_fields": missing_critical,
+                        "missing_important_fields": missing_important,
+                        "public_data_summary": public_summary
+                    })
                     fail_count += 1
                     continue
 
+                # Warn if important fields are missing but continue processing
+                if missing_important:
+                    log_warning(
+                        status_fn,
+                        msg="Public data is missing some important fields",
+                        details=f"Title: {title}, Missing: {', '.join(missing_important)}"
+                    )
+
                 # Collect portal data for each color variant
                 portal_data_by_color = {}
+                portal_warnings = []  # Track portal data issues
 
                 for variant_record in variant_records:
                     color = variant_record.get("color", "").strip()
@@ -335,8 +369,38 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     # Search portal for product using title and color
                     portal_data = collector.collect_portal_data(title, color, status_fn)
 
-                    if portal_data:
+                    # Validate portal data
+                    has_data, missing_portal_fields = DataValidator.validate_portal_data(portal_data)
+                    portal_summary = DataValidator.get_portal_data_summary(portal_data)
+
+                    if has_data:
                         portal_data_by_color[color] = portal_data
+
+                        # Warn if missing important fields
+                        if missing_portal_fields:
+                            warning_msg = f"Portal data for color '{color}' is missing: {', '.join(missing_portal_fields)}"
+                            log_warning(
+                                status_fn,
+                                msg=warning_msg,
+                                details=f"Title: {title}, Color: {color}"
+                            )
+                            portal_warnings.append({
+                                "color": color,
+                                "missing_fields": missing_portal_fields,
+                                "summary": portal_summary
+                            })
+                    else:
+                        warning_msg = f"No portal data found for color '{color}'"
+                        log_warning(
+                            status_fn,
+                            msg=warning_msg,
+                            details=f"Title: {title}, Color: {color}"
+                        )
+                        portal_warnings.append({
+                            "color": color,
+                            "missing_fields": DataValidator.PORTAL_IMPORTANT_FIELDS[:],
+                            "summary": portal_summary
+                        })
 
                 # Generate Shopify product
                 product = generator.generate_product(
@@ -350,10 +414,28 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 products.append(product)
                 success_count += 1
 
+                # Track portal warnings if present
+                if portal_warnings:
+                    warnings.append({
+                        "title": title,
+                        "reason": "Product generated with incomplete portal data",
+                        "colors": [v.get("color", "") for v in variant_records],
+                        "variant_count": len(variant_records),
+                        "product_url": product_url,
+                        "portal_warnings": portal_warnings,
+                        "public_data_summary": public_summary
+                    })
+
+                # Build success message with warnings if present
+                success_details = f"Title: {title}, Variants: {len(product['variants'])}, Images: {len(product['images'])}"
+                if portal_warnings:
+                    colors_with_issues = [w["color"] for w in portal_warnings]
+                    success_details += f", Portal warnings for colors: {', '.join(colors_with_issues)}"
+
                 log_success(
                     status_fn,
-                    msg="Product generated successfully",
-                    details=f"Title: {title}, Variants: {len(product['variants'])}, Images: {len(product['images'])}"
+                    msg="Product generated successfully" + (" (with warnings)" if portal_warnings else ""),
+                    details=success_details
                 )
 
             except Exception as e:
@@ -363,6 +445,13 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     details=f"Title: {title}",
                     exc=e
                 )
+                failures.append({
+                    "title": title,
+                    "reason": f"Exception during processing: {str(e)}",
+                    "colors": [v.get("color", "") for v in variant_records],
+                    "variant_count": len(variant_records),
+                    "exception_type": type(e).__name__
+                })
                 fail_count += 1
                 continue
 
@@ -372,12 +461,42 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
 
         save_output_file(products, output_file, status_fn)
 
+        # Save comprehensive report with failures and warnings
+        if failures or warnings:
+            report_file = output_file.replace(".json", "_report.json")
+            try:
+                report = {
+                    "summary": {
+                        "total_products": len(product_families),
+                        "successful": success_count,
+                        "skipped": skip_count,
+                        "failed": fail_count,
+                        "with_warnings": len(warnings)
+                    },
+                    "failures": failures,
+                    "warnings": warnings
+                }
+                with open(report_file, "w", encoding="utf-8") as f:
+                    json.dump(report, f, indent=2, ensure_ascii=False)
+                log_and_status(
+                    status_fn,
+                    msg=f"Saved processing report: {len(failures)} failures, {len(warnings)} warnings",
+                    ui_msg=f"Saved processing report ({len(failures)} failures, {len(warnings)} warnings)"
+                )
+            except Exception as e:
+                log_warning(
+                    status_fn,
+                    msg="Failed to save report file",
+                    details=f"File: {report_file}, Error: {str(e)}"
+                )
+
         # Summary
         log_summary(
             status_fn,
             title="PROCESSING COMPLETE",
             stats={
                 "✅ Successful": success_count,
+                "⚠️  With Warnings": len(warnings),
                 "⏭ Skipped": skip_count,
                 "❌ Failed": fail_count,
                 "Total": len(product_families)
