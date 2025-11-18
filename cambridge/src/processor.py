@@ -20,6 +20,7 @@ import json
 import os
 import sys
 import logging
+import math
 import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Callable
@@ -359,8 +360,14 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     if not color:
                         continue
 
-                    # Get alternate title from variant record
-                    title_alt = variant_record.get("title_alt", "").strip()
+                    # Get alternate title from variant record (handle NaN from Excel)
+                    title_alt_raw = variant_record.get("title_alt", "")
+                    if isinstance(title_alt_raw, float) and math.isnan(title_alt_raw):
+                        title_alt = ""
+                    elif isinstance(title_alt_raw, str):
+                        title_alt = title_alt_raw.strip()
+                    else:
+                        title_alt = str(title_alt_raw).strip() if title_alt_raw is not None else ""
 
                     log_and_status(
                         status_fn,
