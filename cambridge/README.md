@@ -819,6 +819,18 @@ For issues or questions:
 
 ## Version History
 
+### v1.1.1 (2025-11-18)
+- **Fixed:** Portal index builder now uses `/product/{internalid}` format as fallback when `urlcomponent` is empty
+- **Fixed:** Edgestone Plus and similar products now scrape correctly (were using category URLs instead of product URLs)
+- **Improved:** Portal index now includes 1046 products (up from 362) with proper URL fallback logic
+
+### v1.1.0 (2025-11-17)
+- Added `title_alt` column support for alternate portal search titles
+- Added portal-only fallback when public site fails
+- Added `skip_accessories_category` option in GUI and config
+- Improved data validation with critical vs important fields
+- Enhanced error handling and reporting
+
 ### v1.0.0 (2025-11-10)
 - Initial release
 - Public website parsing

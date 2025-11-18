@@ -337,6 +337,7 @@ class CambridgePortalIndexBuilder:
                 display_name = item.get("displayname", "")
                 url_component = item.get("urlcomponent", "")
                 item_id = item.get("itemid", "")
+                internal_id = item.get("internalid", "")
                 price = item.get("onlinecustomerprice", "")
                 stock = item.get("quantityavailable", 0)
 
@@ -356,11 +357,18 @@ class CambridgePortalIndexBuilder:
                 # API returns: /accessories/alliance-cleaners/.../Alliance-Gator-Clean-Sealer-Stripper-1-Gal.
                 # We need: /Alliance-Gator-Clean-Sealer-Stripper-1-Gal.
                 # Example: /Sherwood-Ledgestone-3-Pc.-Design-Kit-Onyx-Natural
+                #
+                # Fallback: If urlcomponent is empty, use /product/{internalid} format
+                # Example: /product/21263 (for Edgestone Plus products)
                 if url_component:
                     # Extract last component (split by / and take last part)
                     last_component = url_component.strip("/").split("/")[-1]
                     product_url = f"/{last_component}"
+                elif internal_id:
+                    # Use internalid as fallback
+                    product_url = f"/product/{internal_id}"
                 else:
+                    # Last resort: use category URL (will fail scraping but better than crashing)
                     product_url = category_url
 
                 # Extract color family from category URL and prepend to title if not already present

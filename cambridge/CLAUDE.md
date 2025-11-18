@@ -127,7 +127,7 @@ playwright install chromium
 
 ### 1. Dual Product Index Architecture
 
-**Why:** Public site has limited products (60), portal has full catalog (362) with SKUs/prices per color
+**Why:** Public site has limited products (60), portal has full catalog (1000+) with SKUs/prices per color
 
 **Implementation:**
 - **Public Index** (`cache/product_index.json`):
@@ -143,12 +143,17 @@ playwright install chromium
        - Includes both level 2 (e.g., `/wall-plus/edgestone-plus`) and level 3+ categories
     2. Authenticate with Playwright, query search API per category
   - Extracts individual products with SKU, price, stock, images
+  - **URL extraction with fallback logic:**
+    - Primary: Uses `urlcomponent` field (e.g., `/Sherwood-Ledgestone-3-Pc.-Design-Kit-Onyx-Natural`)
+    - Fallback: Uses `/product/{internalid}` format when `urlcomponent` is empty (e.g., `/product/21263`)
+    - Last resort: Uses category URL (will fail scraping)
   - Used for matching exact color variants
-  - ~362 products, auto-rebuilds if older than 7 days
+  - ~1046 products, auto-rebuilds if older than 7 days
 
 **Trade-offs:**
 - ✅ Accurate matching (public fuzzy match → portal exact match)
 - ✅ Fast subsequent runs (both indexes cached)
+- ✅ Handles products with missing urlcomponent via internalid fallback
 - ❌ Slow first run (~5-7 minutes to build both indexes)
 - ❌ Portal index requires valid dealer credentials
 
