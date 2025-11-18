@@ -413,6 +413,48 @@ def build_gui():
     end_var.trace_add("write", on_end_change)
     current_row += 1
 
+    # Inventory Quantity
+    label_frame = tb.Frame(container)
+    label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
+
+    tb.Label(label_frame, text="Inventory Quantity", anchor="w").pack(side="left")
+    help_icon = tb.Label(
+        label_frame,
+        text=" ⓘ ",
+        font=("Arial", 9),
+        foreground="#5BC0DE",
+        cursor="hand2"
+    )
+    help_icon.pack(side="left")
+    ToolTip(
+        help_icon,
+        text="Specify the inventory quantity to apply to all products.\n\nThis value will be set for all variants in the output.\nDefault: 5\n\nTip: Set to 0 to mark products as out of stock.",
+        bootstyle="info"
+    )
+    tb.Label(label_frame, text=":", anchor="w").pack(side="left")
+
+    inventory_var = tb.IntVar(value=cfg.get("inventory_quantity", 5))
+    tb.Spinbox(
+        container,
+        textvariable=inventory_var,
+        from_=0,
+        to=999999,
+        increment=1,
+        width=10
+    ).grid(row=current_row, column=1, sticky="w", padx=5, pady=5)
+
+    def on_inventory_change(*args):
+        try:
+            val = inventory_var.get()
+            cfg["inventory_quantity"] = val
+            save_config(cfg)
+        except (ValueError, tk.TclError, Exception):
+            cfg["inventory_quantity"] = 5
+            save_config(cfg)
+
+    inventory_var.trace_add("write", on_inventory_change)
+    current_row += 1
+
     # ========== Product Indexes Section ==========
     section_label = tb.Label(
         container,

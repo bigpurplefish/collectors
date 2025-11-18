@@ -348,7 +348,7 @@ class CambridgeProductGenerator:
                     "price": str(price),
                     "cost": str(cost),
                     "barcode": f"{base_item_number}-{unit_iterator}",
-                    "inventory_quantity": 0,
+                    "inventory_quantity": self.config.get("inventory_quantity", 5),
                     "position": variant_position,
                     "option1": color,
                     "option2": unit_config["name"],

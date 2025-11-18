@@ -22,6 +22,7 @@ The Cambridge collector:
 - ✅ Dealer portal authentication (Playwright-based)
 - ✅ Skip/overwrite processing modes
 - ✅ Record range selection
+- ✅ Configurable inventory quantity (applies to all products)
 - ✅ Thread-safe GUI with real-time status updates
 - ✅ Shopify variant image filtering (alt tag generation)
 - ✅ Image URL cleaning and deduplication
@@ -818,6 +819,11 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.2.0 (2025-11-18)
+- **Added:** Configurable inventory quantity field in GUI and config (default: 5)
+- **Added:** User can now specify inventory quantity to apply to all products
+- **Improved:** GUI layout with inventory quantity field after end record field
 
 ### v1.1.1 (2025-11-18)
 - **Fixed:** Portal index builder now uses `/product/{internalid}` format as fallback when `urlcomponent` is empty
