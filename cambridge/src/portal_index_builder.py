@@ -267,6 +267,11 @@ class CambridgePortalIndexBuilder:
             # Level 3: /pavers/sherwood/sherwood-ledgestone-3-pc-design-kit (3+ slashes)
             is_product_category = level >= 2 and fullurl and fullurl.count("/") >= 2
 
+            # Skip /accessories category if configured
+            skip_accessories = self.config.get("skip_accessories_category", True)
+            if skip_accessories and fullurl.startswith("/accessories"):
+                continue
+
             if is_product_category and fullurl not in category_urls:
                 category_urls.append(fullurl)
 

@@ -528,6 +528,35 @@ def build_gui():
     rebuild_index_var.trace_add("write", on_rebuild_change)
     current_row += 1
 
+    # Skip Accessories Category Checkbox
+    skip_accessories_var = tb.BooleanVar(value=cfg.get("skip_accessories_category", True))
+
+    skip_accessories_checkbox = tb.Checkbutton(
+        container,
+        text="Skip /accessories Category When Building Portal Index",
+        variable=skip_accessories_var,
+        bootstyle="primary-round-toggle"
+    )
+    skip_accessories_checkbox.grid(row=current_row, column=0, columnspan=3, sticky="w", padx=5, pady=5)
+
+    def on_skip_accessories_change(*args):
+        try:
+            cfg["skip_accessories_category"] = skip_accessories_var.get()
+            save_config(cfg)
+        except Exception:
+            pass
+
+    skip_accessories_var.trace_add("write", on_skip_accessories_change)
+    current_row += 1
+
+    # Tooltip for skip accessories
+    ToolTip(
+        skip_accessories_checkbox,
+        text="When enabled, /accessories category will be excluded from the portal product index.\n"
+             "This reduces index size and build time. Disable if you need accessories products.",
+        bootstyle="info"
+    )
+
     # ========== Action Buttons ==========
     button_frame = tb.Frame(app)
     button_frame.pack(pady=10)

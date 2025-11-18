@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
     "start_record": "",  # blank = start from beginning
     "end_record": "",    # blank = process to end
     "rebuild_index": False,  # Force rebuild product index
+    "skip_accessories_category": True,  # Skip /accessories category when building portal index
     "index_max_age_days": 7,  # Auto-rebuild if older than 7 days
 
     "_IMAGE_SETTINGS": "# Image Quality (for UPCItemDB fallback if needed)",
