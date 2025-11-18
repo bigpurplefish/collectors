@@ -15,6 +15,8 @@ The Cambridge collector:
 **Key Features:**
 - ✅ Cached product index (auto-refreshes if stale)
 - ✅ Fuzzy title matching for product search
+- ✅ Alternate title fallback for portal search
+- ✅ Portal-only fallback when public site fails
 - ✅ Automatic variant grouping by title
 - ✅ Automatic SKU generation (cross-collector uniqueness)
 - ✅ Dealer portal authentication (Playwright-based)
@@ -179,24 +181,28 @@ python3 scripts/build_index.py
 
 The input file must be an Excel file (.xlsx) with the following columns:
 
-| Column          | Description                    | Required |
-|-----------------|--------------------------------|----------|
-| `vendor_type`   | Product category               | Yes      |
-| `title`         | Product title                  | Yes      |
-| `color_category`| Color category (STANDARD, etc) | Yes      |
-| `color`         | Color variant name             | Yes      |
-| `item_#`        | Item number / SKU              | No       |
-| `price`         | Retail price                   | No       |
+| Column          | Description                                | Required |
+|-----------------|-------------------------------------------|----------|
+| `vendor_type`   | Product category                          | Yes      |
+| `title`         | Product title                             | Yes      |
+| `title_alt`     | Alternate title for portal search fallback | No       |
+| `color_category`| Color category (STANDARD, etc)             | Yes      |
+| `color`         | Color variant name                        | Yes      |
+| `item_#`        | Item number / SKU                         | No       |
+| `price`         | Retail price                              | No       |
 
 **Example:**
 
 ```
-vendor_type      | title                            | color_category | color          | item_# | price
-Paving Stones    | Sherwood Ledgestone 3-Pc. Kit   | STANDARD      | Onyx/Natural   |        |
-Paving Stones    | Sherwood Ledgestone 3-Pc. Kit   | STANDARD      | Driftwood      |        |
+vendor_type   | title                          | title_alt                    | color_category | color        | item_# | price
+Paving Stones | Sherwood Ledgestone 3-Pc. Kit | Sherwood Ledgestone Design  | STANDARD      | Onyx/Natural |        |
+Paving Stones | Sherwood Ledgestone 3-Pc. Kit | Sherwood Ledgestone Design  | STANDARD      | Driftwood    |        |
 ```
 
-**Important:** Records with the same `title` are treated as color variants of the same product.
+**Important Notes:**
+- Records with the same `title` are treated as color variants of the same product
+- `title_alt` is used as a fallback when searching the dealer portal - if the primary title doesn't find a match in the portal index, the alternate title will be tried automatically
+- If a product is not found on the public website, the collector will attempt to use portal data only (see Fallback Behavior below)
 
 ---
 
@@ -505,11 +511,32 @@ The collector validates collected data and categorizes fields as:
 - `cost` - Product cost
 - `model_number` - Vendor SKU
 
+### Fallback Behavior
+
+The collector implements a **two-tier fallback system** to maximize product recovery:
+
+**1. Alternate Title Fallback (Portal Search):**
+- When searching the portal index by primary title + color fails
+- If `title_alt` column has a value, automatically tries searching with alternate title
+- Logs which title was used for the match
+- Helps handle products with different naming between public site and portal
+
+**2. Portal-Only Fallback (Public Site Missing):**
+- When product is not found on public website (www.cambridgepavers.com)
+- Automatically searches dealer portal (shop.cambridgepavers.com) for all color variants
+- If portal data found, creates product using portal data only
+- Product is **included in output** with available data
+- Tracked in warnings report as "portal only" with missing public fields
+- Missing public data: description, hero image, gallery images, specifications
+
+**Result:** Products are only excluded from output if they cannot be found on either the public site OR the dealer portal.
+
 ### Processing Behavior
 
-**When Product URL Not Found:**
-- Product is **skipped** (not included in output)
-- Logged as failure in report
+**When Product URL Not Found on Public Site:**
+- Portal search attempted as fallback
+- If found in portal: Product **included** with portal data only (tracked in warnings)
+- If not found in portal: Product **skipped** (logged as failure)
 - Processing continues with next product
 
 **When Public Data Validation Fails:**

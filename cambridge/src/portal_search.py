@@ -103,7 +103,8 @@ class CambridgePortalSearcher:
         self,
         title: str,
         color: str,
-        log: Callable = print
+        log: Callable = print,
+        title_alt: str = ""
     ) -> Optional[Dict[str, Any]]:
         """
         Find product URL by title and color.
@@ -111,10 +112,14 @@ class CambridgePortalSearcher:
         Portal has color-specific variants in the index (e.g., "Sherwood Ledgestone 3-Pc. Design Kit Onyx Natural").
         Match on both title and color for better accuracy.
 
+        If no match is found with the primary title and title_alt is provided,
+        will attempt to search again using the alternate title.
+
         Args:
             title: Product title to search for
             color: Color variant to match
             log: Logging function
+            title_alt: Alternate title to use as fallback (optional)
 
         Returns:
             Product dictionary or None if not found
@@ -180,9 +185,49 @@ class CambridgePortalSearcher:
             )
             return best_match
 
-        log_and_status(
-            log,
-            f"No portal product match found for '{title}' + '{color}' (best score: {best_score}, threshold: {self.threshold})",
-            ui_msg=f"No portal match (score: {best_score})"
-        )
+        # If no match and alternate title provided, try searching with alternate title
+        if title_alt and title_alt.strip():
+            log_and_status(
+                log,
+                f"Primary title '{title}' not found, trying alternate title: '{title_alt}'",
+                ui_msg=f"Trying alternate title: '{title_alt}'"
+            )
+
+            # Reset for alternate title search
+            best_match_alt = None
+            best_score_alt = 0.0
+
+            for product in products:
+                product_title = product.get("title", "")
+
+                # Try matching with alternate title + color
+                search_text_alt = f"{title_alt} {normalized_color}"
+                score_alt = fuzz.token_sort_ratio(search_text_alt.lower(), product_title.lower())
+
+                if score_alt > best_score_alt:
+                    best_score_alt = score_alt
+                    best_match_alt = product
+
+            # Check if alternate title match exceeds threshold
+            if best_match_alt and best_score_alt >= self.threshold:
+                log_success(
+                    log,
+                    f"Portal product match using alternate title: '{best_match_alt['title']}'",
+                    details=f"Matched '{title_alt}' + '{color}' with score: {best_score_alt}, threshold: {self.threshold}"
+                )
+                return best_match_alt
+
+            log_and_status(
+                log,
+                f"No portal product match found for alternate title '{title_alt}' + '{color}' (best score: {best_score_alt})",
+                ui_msg=f"No portal match with alternate title (score: {best_score_alt})"
+            )
+
+        else:
+            log_and_status(
+                log,
+                f"No portal product match found for '{title}' + '{color}' (best score: {best_score}, threshold: {self.threshold})",
+                ui_msg=f"No portal match (score: {best_score})"
+            )
+
         return None

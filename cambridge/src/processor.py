@@ -300,56 +300,55 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
 
                 product_url = collector.find_product_url(title, first_color, status_fn)
 
+                # Initialize public data
+                public_data = {}
+                using_portal_fallback = False
+
                 if not product_url:
-                    log_error(
+                    log_warning(
                         status_fn,
-                        msg="Product URL not found",
+                        msg="Product URL not found in public index, trying portal as fallback",
                         details=f"Title: {title}, Color: {first_color}"
                     )
-                    failures.append({
-                        "title": title,
-                        "reason": "Product URL not found in public index",
-                        "colors": [v.get("color", "") for v in variant_records],
-                        "search_color": first_color,
-                        "variant_count": len(variant_records)
-                    })
-                    fail_count += 1
-                    continue
+                    using_portal_fallback = True
+                    # Will try to collect portal data below and create product if found
+                else:
+                    # Collect public website data
+                    public_data = collector.collect_public_data(product_url, status_fn)
 
-                # Collect public website data
-                public_data = collector.collect_public_data(product_url, status_fn)
-
-                # Validate public data
+                # Validate public data (skip validation if using portal fallback)
                 is_valid, missing_critical, missing_important = DataValidator.validate_public_data(public_data)
                 public_summary = DataValidator.get_public_data_summary(public_data)
 
-                if not is_valid:
-                    log_error(
-                        status_fn,
-                        msg="Public data validation failed - missing critical fields",
-                        details=f"Title: {title}, Missing critical: {', '.join(missing_critical)}, Missing important: {', '.join(missing_important)}"
-                    )
-                    failures.append({
-                        "title": title,
-                        "reason": "Public data validation failed",
-                        "colors": [v.get("color", "") for v in variant_records],
-                        "search_color": first_color,
-                        "variant_count": len(variant_records),
-                        "product_url": product_url,
-                        "missing_critical_fields": missing_critical,
-                        "missing_important_fields": missing_important,
-                        "public_data_summary": public_summary
-                    })
-                    fail_count += 1
-                    continue
+                if not using_portal_fallback:
+                    # Only validate if we expected to have public data
+                    if not is_valid:
+                        log_error(
+                            status_fn,
+                            msg="Public data validation failed - missing critical fields",
+                            details=f"Title: {title}, Missing critical: {', '.join(missing_critical)}, Missing important: {', '.join(missing_important)}"
+                        )
+                        failures.append({
+                            "title": title,
+                            "reason": "Public data validation failed",
+                            "colors": [v.get("color", "") for v in variant_records],
+                            "search_color": first_color,
+                            "variant_count": len(variant_records),
+                            "product_url": product_url,
+                            "missing_critical_fields": missing_critical,
+                            "missing_important_fields": missing_important,
+                            "public_data_summary": public_summary
+                        })
+                        fail_count += 1
+                        continue
 
-                # Warn if important fields are missing but continue processing
-                if missing_important:
-                    log_warning(
-                        status_fn,
-                        msg="Public data is missing some important fields",
-                        details=f"Title: {title}, Missing: {', '.join(missing_important)}"
-                    )
+                    # Warn if important fields are missing but continue processing
+                    if missing_important:
+                        log_warning(
+                            status_fn,
+                            msg="Public data is missing some important fields",
+                            details=f"Title: {title}, Missing: {', '.join(missing_important)}"
+                        )
 
                 # Collect portal data for each color variant
                 portal_data_by_color = {}
@@ -360,14 +359,17 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     if not color:
                         continue
 
+                    # Get alternate title from variant record
+                    title_alt = variant_record.get("title_alt", "").strip()
+
                     log_and_status(
                         status_fn,
                         msg=f"  Collecting portal data for color: {color} (product: {title})",
                         ui_msg=f"  Collecting portal data for color: {color}"
                     )
 
-                    # Search portal for product using title and color
-                    portal_data = collector.collect_portal_data(title, color, status_fn)
+                    # Search portal for product using title and color (with alternate title fallback)
+                    portal_data = collector.collect_portal_data(title, color, status_fn, title_alt)
 
                     # Validate portal data
                     has_data, missing_portal_fields = DataValidator.validate_portal_data(portal_data)
@@ -402,6 +404,31 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                             "summary": portal_summary
                         })
 
+                # If using portal fallback and no portal data found, fail
+                if using_portal_fallback and not portal_data_by_color:
+                    log_error(
+                        status_fn,
+                        msg="Product not found in public index or portal",
+                        details=f"Title: {title}, searched {len(variant_records)} colors in portal"
+                    )
+                    failures.append({
+                        "title": title,
+                        "reason": "Product not found in public index or portal",
+                        "colors": [v.get("color", "") for v in variant_records],
+                        "search_color": first_color,
+                        "variant_count": len(variant_records)
+                    })
+                    fail_count += 1
+                    continue
+
+                # If using portal fallback, track that public description is missing
+                if using_portal_fallback:
+                    log_warning(
+                        status_fn,
+                        msg="Product generated from portal data only (public site data unavailable)",
+                        details=f"Title: {title}, missing public description, hero image, and gallery"
+                    )
+
                 # Generate Shopify product
                 product = generator.generate_product(
                     title=title,
@@ -414,27 +441,39 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 products.append(product)
                 success_count += 1
 
-                # Track portal warnings if present
-                if portal_warnings:
-                    warnings.append({
+                # Track warnings
+                if portal_warnings or using_portal_fallback:
+                    warning_entry = {
                         "title": title,
-                        "reason": "Product generated with incomplete portal data",
                         "colors": [v.get("color", "") for v in variant_records],
                         "variant_count": len(variant_records),
-                        "product_url": product_url,
-                        "portal_warnings": portal_warnings,
+                        "product_url": product_url if product_url else "N/A (portal only)",
                         "public_data_summary": public_summary
-                    })
+                    }
+
+                    if using_portal_fallback:
+                        warning_entry["reason"] = "Product generated from portal only (missing public description and images)"
+                        warning_entry["missing_public_fields"] = ["description", "hero_image", "gallery_images", "specifications"]
+                    elif portal_warnings:
+                        warning_entry["reason"] = "Product generated with incomplete portal data"
+                        warning_entry["portal_warnings"] = portal_warnings
+
+                    warnings.append(warning_entry)
 
                 # Build success message with warnings if present
                 success_details = f"Title: {title}, Variants: {len(product['variants'])}, Images: {len(product['images'])}"
-                if portal_warnings:
+
+                warning_suffix = ""
+                if using_portal_fallback:
+                    warning_suffix = " (portal only - missing public data)"
+                elif portal_warnings:
                     colors_with_issues = [w["color"] for w in portal_warnings]
                     success_details += f", Portal warnings for colors: {', '.join(colors_with_issues)}"
+                    warning_suffix = " (with warnings)"
 
                 log_success(
                     status_fn,
-                    msg="Product generated successfully" + (" (with warnings)" if portal_warnings else ""),
+                    msg="Product generated successfully" + warning_suffix,
                     details=success_details
                 )
 

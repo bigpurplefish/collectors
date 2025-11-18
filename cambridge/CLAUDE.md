@@ -94,13 +94,16 @@ playwright install chromium
    ↓
 4. For each product family:
    a. Search PUBLIC index for product URL (fuzzy match on title)
-   b. Collect public website data (Playwright for gallery images)
+   b. IF FOUND: Collect public website data (Playwright for gallery images)
+      IF NOT FOUND: Set portal-only flag, skip public data
    c. For each color variant:
       - Search PORTAL index by title + color
+      - IF NOT FOUND and title_alt exists: Try again with title_alt
       - Collect dealer portal data (authenticated)
-   d. Generate Shopify product with variants
+   d. IF portal-only and no portal data: Skip product (failure)
+      ELSE: Generate Shopify product with variants
    ↓
-5. Save JSON Output
+5. Save JSON Output + Report (failures and warnings)
 ```
 
 ### Module Responsibilities
