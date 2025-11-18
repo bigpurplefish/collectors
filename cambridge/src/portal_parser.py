@@ -209,12 +209,15 @@ class CambridgePortalParser:
             return images
 
         try:
-            # Wait for gallery to load - specific selector for bxSlider
+            # Wait for gallery to load - specific selector for bxSlider with longer timeout
+            has_carousel = False
             try:
-                self._page.wait_for_selector(".bx-viewport ul.bxslider li img", timeout=5000)
+                self._page.wait_for_selector(".bx-viewport ul.bxslider li img", timeout=10000)
                 has_carousel = True
-            except:
-                has_carousel = False
+                # Give extra time for images to load
+                time.sleep(0.5)
+            except PlaywrightTimeoutError:
+                log("  ⚠ Carousel not found, trying fallback image")
 
             if has_carousel:
                 # Extract gallery images from bxSlider carousel
@@ -242,8 +245,9 @@ class CambridgePortalParser:
                             if base_url and base_url not in images:
                                 images.append(base_url)
 
-                    log(f"  Found {len(images)} gallery images")
-                    return images
+                    if images:
+                        log(f"  Found {len(images)} gallery images from carousel")
+                        return images
 
             # Fallback: Try to get the main product image when no carousel found
             try:
@@ -260,7 +264,7 @@ class CambridgePortalParser:
 
                             if base_url:
                                 images.append(base_url)
-                                log(f"  Found 1 main product image (no carousel)")
+                                log(f"  Found 1 main product image (fallback)")
                                 return images
 
                 log("  ⚠ Gallery images not found")
@@ -290,26 +294,36 @@ class CambridgePortalParser:
             return ""
 
         try:
-            # Wait for custom fields to load
-            self._page.wait_for_selector("span.custom-pdp-fields-label", timeout=5000)
+            # Wait for custom fields to load with longer timeout
+            self._page.wait_for_selector("span.custom-pdp-fields-label", timeout=10000)
+
+            # Give extra time for JavaScript to render
+            time.sleep(0.5)
 
             # Get all custom field labels
             field_labels = self._page.query_selector_all("span.custom-pdp-fields-label")
+
+            if not field_labels:
+                log("  ⚠ No custom PDP fields found")
+                return ""
 
             for label in field_labels:
                 text = label.text_content().strip()
                 if "ITEM WEIGHT:" in text.upper():
                     # Extract the weight value after the label
-                    # Format: "ITEM WEIGHT: 3078 lb"
+                    # Format: "ITEM WEIGHT: 3078 lb" or "ITEM WEIGHT: 2400 lb"
                     match = re.search(r"ITEM WEIGHT:\s*(\d+(?:\.\d+)?)\s*(lb|lbs|kg|kgs|oz)", text, re.IGNORECASE)
                     if match:
                         weight = f"{match.group(1)} {match.group(2)}"
                         log(f"  Found weight: {weight}")
                         return weight
 
-            log("  ⚠ Weight not found")
+            log("  ⚠ Weight field exists but value not found")
             return ""
 
+        except PlaywrightTimeoutError:
+            log("  ⚠ Weight not found: timeout waiting for custom fields")
+            return ""
         except Exception as e:
             log(f"  ⚠ Weight not found: {e}")
             return ""
@@ -344,28 +358,59 @@ class CambridgePortalParser:
 
     def _extract_cost(self, soup: BeautifulSoup, log: Callable) -> str:
         """
-        Extract product cost/price.
+        Extract product cost/price using Playwright.
 
         Args:
-            soup: BeautifulSoup object
+            soup: BeautifulSoup object (not used, kept for compatibility)
             log: Logging function
 
         Returns:
             Cost string or empty string
         """
-        # Look for price in product details
-        # SuiteCommerce typically has price in a specific element
-        for pattern in [r"\$\d+(?:\.\d{2})?", r"Price:\s*\$\d+(?:\.\d{2})?"]:
-            match = re.search(pattern, soup.get_text())
-            if match:
-                cost = match.group(0)
-                # Clean up
-                cost = re.sub(r"^Price:\s*", "", cost)
-                log(f"  Found cost: {cost}")
-                return cost
+        if not self._page:
+            log("  ❌ No Playwright page available")
+            return ""
 
-        log("  ⚠ Cost not found")
-        return ""
+        try:
+            # Wait for price element to load with longer timeout
+            # Format: <span class="product-views-price-lead" itemprop="price" data-rate="448.6"> $448.60 </span>
+            self._page.wait_for_selector("span.product-views-price-lead[itemprop='price']", timeout=10000)
+
+            # Give extra time for JavaScript to render
+            time.sleep(0.5)
+
+            # Get price element
+            price_element = self._page.query_selector("span.product-views-price-lead[itemprop='price']")
+            if price_element:
+                # Try data-rate attribute first (most reliable)
+                data_rate = price_element.get_attribute("data-rate")
+                if data_rate:
+                    try:
+                        cost = f"${float(data_rate):.2f}"
+                        log(f"  Found cost from data-rate: {cost}")
+                        return cost
+                    except (ValueError, TypeError):
+                        pass
+
+                # Fallback: Get text content and clean it
+                text = price_element.text_content().strip()
+                # Extract just the numeric value with dollar sign
+                # Format: "$448.60" or "$448.60  " (with trailing spaces)
+                match = re.search(r"\$\s*(\d+(?:\.\d{2})?)", text)
+                if match:
+                    cost = f"${match.group(1)}"
+                    log(f"  Found cost from text: {cost}")
+                    return cost
+
+            log("  ⚠ Price element exists but value not found")
+            return ""
+
+        except PlaywrightTimeoutError:
+            log("  ⚠ Cost not found: timeout waiting for price element")
+            return ""
+        except Exception as e:
+            log(f"  ⚠ Cost not found: {e}")
+            return ""
 
     def _extract_model_number(self, soup: BeautifulSoup, log: Callable) -> str:
         """
@@ -383,11 +428,15 @@ class CambridgePortalParser:
             return ""
 
         try:
-            # Wait for SKU element to load
-            self._page.wait_for_selector("span.product-line-sku-value", timeout=5000)
+            # Wait for SKU element to load with longer timeout
+            self._page.wait_for_selector("span.product-line-sku-value", timeout=10000)
+
+            # Give extra time for JavaScript to render
+            time.sleep(0.5)
 
             # Get SKU element
             # Format: <span class="product-line-sku-value" itemprop="sku"> 11003310 </span>
+            # Or: <span class="product-line-sku-value" itemprop="sku"> 24001070CBS </span>
             sku_element = self._page.query_selector("span.product-line-sku-value")
             if sku_element:
                 value = sku_element.text_content().strip()
@@ -395,9 +444,12 @@ class CambridgePortalParser:
                     log(f"  Found model number: {value}")
                     return value
 
-            log("  ⚠ Model number not found")
+            log("  ⚠ SKU element exists but value is empty")
             return ""
 
+        except PlaywrightTimeoutError:
+            log("  ⚠ Model number not found: timeout waiting for SKU element")
+            return ""
         except Exception as e:
             log(f"  ⚠ Model number not found: {e}")
             return ""
