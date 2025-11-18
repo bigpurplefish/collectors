@@ -27,7 +27,7 @@ The Cambridge collector:
 - ✅ Shopify variant image filtering (alt tag generation)
 - ✅ Image URL cleaning and deduplication
 - ✅ Standard weight fields (value + unit)
-- ✅ Unit of sale as variant option
+- ✅ Simplified unit logic (Piece priority, Sq Ft fallback)
 - ✅ Cost and price from input file
 - ✅ Graceful error handling with detailed reporting
 - ✅ Data validation and missing field tracking
@@ -819,6 +819,14 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.3.0 (2025-11-18)
+- **Changed:** Simplified cost/price handling to only use Piece or Sq Ft units
+- **Changed:** Each color now generates exactly ONE variant (not multiple units)
+- **Changed:** Unit priority: Piece (if available) → Sq Ft (fallback)
+- **Removed:** Support for Kit, Cube, Layer, and Band units
+- **Improved:** Simpler inventory management with one variant per color
+- **Improved:** Barcode now uses item_# directly instead of item_#-iterator
 
 ### v1.2.0 (2025-11-18)
 - **Added:** Configurable inventory quantity field in GUI and config (default: 5)

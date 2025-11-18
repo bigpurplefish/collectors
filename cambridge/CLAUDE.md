@@ -117,7 +117,7 @@ playwright install chromium
 | `portal_search.py` | Exact matching against cached portal index (title + color) |
 | `public_parser.py` | Parses public website HTML (BeautifulSoup + Playwright for gallery) |
 | `portal_parser.py` | Parses dealer portal (Playwright + BeautifulSoup) |
-| `product_generator.py` | Groups variants, generates Shopify products with multiple unit_of_sale options |
+| `product_generator.py` | Groups variants, generates Shopify products with simplified unit logic (Piece or Sq Ft) |
 | `processor.py` | Main workflow, file I/O, error handling |
 | `config.py` | Configuration management, auto-save |
 
@@ -157,34 +157,40 @@ playwright install chromium
 - ❌ Slow first run (~5-7 minutes to build both indexes)
 - ❌ Portal index requires valid dealer credentials
 
-### 2. Title-Based Variant Grouping with Multiple Units
+### 2. Title-Based Variant Grouping with Simplified Units
 
-**Why:** Input records with same title are color variants, each color may have multiple unit_of_sale options
+**Why:** Input records with same title are color variants, simplified to use only Piece or Sq Ft units
 
 **Implementation:**
 - `product_generator.group_by_title()` groups records
 - Each group becomes one Shopify product
 - Colors become `option1` values
-- Unit of Sale becomes `option2` values (Sq Ft, Kit, Cube, Piece, Layer, Band)
-- Creates cartesian product of color × unit combinations as variants
+- Unit of Sale becomes `option2` values (Piece or Sq Ft only)
+- Each color gets exactly ONE variant with one unit:
+  - **Priority**: Piece (if cost_per_piece and price_per_piece exist)
+  - **Fallback**: Sq Ft (if sq_ft_cost and sq_ft_price exist)
+
+**Trade-offs:**
+- ✅ Simpler inventory management (one variant per color)
+- ✅ Clearer pricing (no multiple units to choose from per color)
+- ✅ Matches actual business practice (buy/sell by piece or sq ft)
+- ❌ Cannot sell same color in multiple units (e.g., both piece AND sq ft)
 
 **Example:**
 ```
 Input Records:
-  - title="Sherwood Ledgestone", color="Onyx", sq_ft_cost=5.99, cost_per_cube=299.00
-  - title="Sherwood Ledgestone", color="Driftwood", sq_ft_cost=5.99, cost_per_cube=299.00
+  - title="Sherwood Ledgestone", color="Onyx", cost_per_piece=2.99, price_per_piece=3.99
+  - title="Sherwood Ledgestone", color="Driftwood", sq_ft_cost=5.99, sq_ft_price=7.99
 
 Output Product:
   - title="Sherwood Ledgestone"
   - options=[
       {name: "Color", values: ["Onyx", "Driftwood"]},
-      {name: "Unit of Sale", values: ["Sq Ft", "Cube"]}
+      {name: "Unit of Sale", values: ["Piece", "Sq Ft"]}
     ]
   - variants=[
-      {option1: "Onyx", option2: "Sq Ft", price: "5.99"},
-      {option1: "Onyx", option2: "Cube", price: "299.00"},
-      {option1: "Driftwood", option2: "Sq Ft", price: "5.99"},
-      {option1: "Driftwood", option2: "Cube", price: "299.00"}
+      {option1: "Onyx", option2: "Piece", cost: "2.99", price: "3.99"},
+      {option1: "Driftwood", option2: "Sq Ft", cost: "5.99", price: "7.99"}
     ]
 ```
 

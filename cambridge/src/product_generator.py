@@ -178,42 +178,40 @@ class CambridgeProductGenerator:
                 "values": colors
             })
 
-        # Option 2: Unit of Sale (from input records)
-        # Order: sq ft, kit, cube, piece, layer, band
-        unit_order = ["Sq Ft", "Kit", "Cube", "Piece", "Layer", "Band"]
-        sales_units = []
-
-        # Check which units have cost/price data across all records
+        # Option 2: Unit of Sale - Now simplified to single unit per color
+        # Each color gets exactly one unit: Piece (priority) or Sq Ft (fallback)
+        # Collect units used across all records
+        import math
+        units_used = set()
         for record in variant_records:
-            import math
-            # Check each unit type in order
-            if not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
-                if "Sq Ft" not in sales_units:
-                    sales_units.append("Sq Ft")
-            if not math.isnan(record.get("cost_per_kit", float('nan'))) and not math.isnan(record.get("price_per_kit", float('nan'))):
-                if "Kit" not in sales_units:
-                    sales_units.append("Kit")
-            if not math.isnan(record.get("cost_per_cube", float('nan'))) and not math.isnan(record.get("price_per_cube", float('nan'))):
-                if "Cube" not in sales_units:
-                    sales_units.append("Cube")
+            # Check piece first (priority)
             if not math.isnan(record.get("cost_per_piece", float('nan'))) and not math.isnan(record.get("price_per_piece", float('nan'))):
-                if "Piece" not in sales_units:
-                    sales_units.append("Piece")
-            if not math.isnan(record.get("cost_per_layer", float('nan'))) and not math.isnan(record.get("price_per_layer", float('nan'))):
-                if "Layer" not in sales_units:
-                    sales_units.append("Layer")
-            if not math.isnan(record.get("cost_per_band", float('nan'))) and not math.isnan(record.get("price_per_band", float('nan'))):
-                if "Band" not in sales_units:
-                    sales_units.append("Band")
+                units_used.add("Piece")
+            # Fall back to sq ft if piece is missing
+            elif not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
+                units_used.add("Sq Ft")
 
-        # Maintain the specified order
-        ordered_units = [unit for unit in unit_order if unit in sales_units]
+        # Only add Unit of Sale option if multiple units are used across colors
+        # (e.g., some colors use Piece, others use Sq Ft)
+        if len(units_used) > 1:
+            # Maintain order: Piece, then Sq Ft
+            ordered_units = []
+            if "Piece" in units_used:
+                ordered_units.append("Piece")
+            if "Sq Ft" in units_used:
+                ordered_units.append("Sq Ft")
 
-        if ordered_units:
             options.append({
                 "name": "Unit of Sale",
                 "position": 2,
                 "values": ordered_units
+            })
+        elif len(units_used) == 1:
+            # Single unit type - still add as option for Shopify compatibility
+            options.append({
+                "name": "Unit of Sale",
+                "position": 2,
+                "values": list(units_used)
             })
 
         return options
@@ -227,8 +225,9 @@ class CambridgeProductGenerator:
         """
         Generate Shopify variants from variant records.
 
-        Creates multiple variants per color based on available unit_of_sale types
-        from input file (sq ft, kit, cube, piece, layer, band).
+        Creates ONE variant per color using simplified unit logic:
+        - Priority: Piece (if cost_per_piece and price_per_piece exist)
+        - Fallback: Sq Ft (if sq_ft_cost and sq_ft_price exist)
 
         Args:
             variant_records: List of variant records (one per color)
@@ -259,141 +258,112 @@ class CambridgeProductGenerator:
             # Get conversion factors
             sq_ft_per_cube = record.get("sq_ft_per_cube", 0) or 0
             pieces_per_cube = record.get("pieces_per_cube", 0) or 0
-            mid_units_per_cube = record.get("mid_units_per_cube", 0) or 0
 
-            # Define unit types in order: sq ft, kit, cube, piece, layer, band
-            unit_configs = [
-                {
-                    "name": "Sq Ft",
-                    "cost_key": "sq_ft_cost",
-                    "price_key": "sq_ft_price",
-                    "conversion_factor": sq_ft_per_cube,
-                    "conversion_name": "sq_ft_per_cube"
-                },
-                {
-                    "name": "Kit",
-                    "cost_key": "cost_per_kit",
-                    "price_key": "price_per_kit",
-                    "conversion_factor": 1,  # Kit weight equals Cube weight
-                    "conversion_name": None
-                },
-                {
-                    "name": "Cube",
-                    "cost_key": "cost_per_cube",
-                    "price_key": "price_per_cube",
-                    "conversion_factor": 1,  # Cube is the base unit
-                    "conversion_name": None
-                },
-                {
+            # Determine which unit to use (Piece priority, Sq Ft fallback)
+            unit_config = None
+
+            # Check Piece first (priority)
+            piece_cost = record.get("cost_per_piece", float('nan'))
+            piece_price = record.get("price_per_piece", float('nan'))
+            if not math.isnan(piece_cost) and not math.isnan(piece_price):
+                unit_config = {
                     "name": "Piece",
-                    "cost_key": "cost_per_piece",
-                    "price_key": "price_per_piece",
+                    "cost": piece_cost,
+                    "price": piece_price,
                     "conversion_factor": pieces_per_cube,
                     "conversion_name": "pieces_per_cube"
-                },
-                {
-                    "name": "Layer",
-                    "cost_key": "cost_per_layer",
-                    "price_key": "price_per_layer",
-                    "conversion_factor": mid_units_per_cube if isinstance(record.get("mid_unit_name"), str) and record.get("mid_unit_name", "").lower() == "layer" else None,
-                    "conversion_name": "mid_units_per_cube (layer)"
-                },
-                {
-                    "name": "Band",
-                    "cost_key": "cost_per_band",
-                    "price_key": "price_per_band",
-                    "conversion_factor": mid_units_per_cube if isinstance(record.get("mid_unit_name"), str) and record.get("mid_unit_name", "").lower() == "band" else None,
-                    "conversion_name": "mid_units_per_cube (band)"
                 }
-            ]
 
-            # Iterator for item number suffix
-            unit_iterator = 1
+            # Fall back to Sq Ft if Piece not available
+            if unit_config is None:
+                sqft_cost = record.get("sq_ft_cost", float('nan'))
+                sqft_price = record.get("sq_ft_price", float('nan'))
+                if not math.isnan(sqft_cost) and not math.isnan(sqft_price):
+                    unit_config = {
+                        "name": "Sq Ft",
+                        "cost": sqft_cost,
+                        "price": sqft_price,
+                        "conversion_factor": sq_ft_per_cube,
+                        "conversion_name": "sq_ft_per_cube"
+                    }
 
-            # Create variants for each unit type that has cost/price data
-            for unit_config in unit_configs:
-                cost = record.get(unit_config["cost_key"], float('nan'))
-                price = record.get(unit_config["price_key"], float('nan'))
+            # Skip this color if no valid unit found
+            if unit_config is None:
+                continue
 
-                # Skip if no cost/price data
-                if math.isnan(cost) or math.isnan(price):
-                    continue
+            # Validate conversion factor exists
+            if unit_config["conversion_factor"] == 0:
+                raise ValueError(
+                    f"Product '{product_title}' color '{color}' has {unit_config['name']} cost/price data "
+                    f"but {unit_config['conversion_name']} is zero or missing. Cannot calculate weight."
+                )
 
-                # Validate conversion factor exists
-                if unit_config["conversion_factor"] is not None:
-                    if unit_config["conversion_factor"] == 0:
-                        raise ValueError(
-                            f"Product '{product_title}' color '{color}' has {unit_config['name']} cost/price data "
-                            f"but {unit_config['conversion_name']} is zero or missing. Cannot calculate weight."
-                        )
-
-                # Calculate weight
-                if unit_config["conversion_factor"] is not None and cube_weight_value:
-                    weight_value = cube_weight_value / unit_config["conversion_factor"]
-                    # Check if weight_value is NaN before converting to int
-                    if math.isnan(weight_value):
-                        grams = 0
-                    else:
-                        grams = int(weight_value * 453.592) if weight_unit == "lb" else 0
-                else:
-                    weight_value = 0
+            # Calculate weight
+            if unit_config["conversion_factor"] and cube_weight_value:
+                weight_value = cube_weight_value / unit_config["conversion_factor"]
+                # Check if weight_value is NaN before converting to int
+                if math.isnan(weight_value):
                     grams = 0
+                else:
+                    grams = int(weight_value * 453.592) if weight_unit == "lb" else 0
+            else:
+                weight_value = 0
+                grams = 0
 
-                # Generate SKU
-                sku = self.sku_generator.generate_unique_sku()
+            # Generate SKU
+            sku = self.sku_generator.generate_unique_sku()
 
-                # Build variant with option keys grouped
-                variant = {
-                    "sku": sku,
-                    "price": str(price),
-                    "cost": str(cost),
-                    "barcode": f"{base_item_number}-{unit_iterator}",
-                    "inventory_quantity": self.config.get("inventory_quantity", 5),
-                    "position": variant_position,
-                    "option1": color,
-                    "option2": unit_config["name"],
-                    "inventory_policy": "deny",
-                    "compare_at_price": None,
-                    "fulfillment_service": "manual",
-                    "inventory_management": "shopify",
-                    "taxable": True,
-                    "grams": grams,
-                    "weight": weight_value,
-                    "weight_unit": weight_unit if weight_unit else "lb",
-                    "requires_shipping": True,
-                    "image_id": None,
-                    "metafields": []
-                }
+            # Build variant with option keys grouped
+            variant = {
+                "sku": sku,
+                "price": str(unit_config["price"]),
+                "cost": str(unit_config["cost"]),
+                "barcode": base_item_number,
+                "inventory_quantity": self.config.get("inventory_quantity", 5),
+                "position": variant_position,
+                "option1": color,
+                "option2": unit_config["name"],
+                "inventory_policy": "deny",
+                "compare_at_price": None,
+                "fulfillment_service": "manual",
+                "inventory_management": "shopify",
+                "taxable": True,
+                "grams": grams,
+                "weight": weight_value,
+                "weight_unit": weight_unit if weight_unit else "lb",
+                "requires_shipping": True,
+                "image_id": None,
+                "metafields": []
+            }
 
-                # Add color_swatch_image metafield (first portal gallery image)
-                if gallery_images:
-                    variant["metafields"].append({
-                        "namespace": "custom",
-                        "key": "color_swatch_image",
-                        "value": gallery_images[0],
-                        "type": "single_line_text_field"
-                    })
-
-                # Add model number metafield if present
-                if model_number:
-                    variant["metafields"].append({
-                        "namespace": "custom",
-                        "key": "model_number",
-                        "value": model_number,
-                        "type": "single_line_text_field"
-                    })
-
-                # Add unit_of_sale metafield
+            # Add color_swatch_image metafield (first portal gallery image)
+            if gallery_images:
                 variant["metafields"].append({
                     "namespace": "custom",
-                    "key": "unit_of_sale",
-                    "value": unit_config["name"],
+                    "key": "color_swatch_image",
+                    "value": gallery_images[0],
                     "type": "single_line_text_field"
                 })
 
-                variants.append(variant)
-                variant_position += 1
-                unit_iterator += 1
+            # Add model number metafield if present
+            if model_number:
+                variant["metafields"].append({
+                    "namespace": "custom",
+                    "key": "model_number",
+                    "value": model_number,
+                    "type": "single_line_text_field"
+                })
+
+            # Add unit_of_sale metafield
+            variant["metafields"].append({
+                "namespace": "custom",
+                "key": "unit_of_sale",
+                "value": unit_config["name"],
+                "type": "single_line_text_field"
+            })
+
+            variants.append(variant)
+            variant_position += 1
 
         return variants
 
