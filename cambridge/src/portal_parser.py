@@ -118,47 +118,71 @@ class CambridgePortalParser:
 
     def fetch_product_page(self, product_url: str, log: Callable = print) -> Optional[str]:
         """
-        Fetch product page HTML using Playwright.
+        Fetch product page HTML using Playwright with retry logic.
+
+        Retries up to 2 times (3 total attempts) with 5-second wait between attempts
+        to handle intermittent page load failures.
 
         Args:
             product_url: Product URL (relative or absolute)
             log: Logging function
 
         Returns:
-            HTML content or None if failed
+            HTML content or None if all attempts failed
         """
         if not self._logged_in:
             if not self.login(log):
                 log("❌ Cannot fetch product page: not logged in")
                 return None
 
-        try:
-            # Construct full URL
-            if product_url.startswith("/"):
-                full_url = f"{self.portal_origin}{product_url}"
-            else:
-                full_url = product_url
+        # Construct full URL
+        if product_url.startswith("/"):
+            full_url = f"{self.portal_origin}{product_url}"
+        else:
+            full_url = product_url
 
-            log(f"Fetching portal page: {full_url}")
+        log(f"Fetching portal page: {full_url}")
 
-            # Navigate to product page
-            self._page.goto(full_url, wait_until="networkidle", timeout=30000)
+        # Retry logic: 3 total attempts with 5-second wait between retries
+        max_attempts = 3
+        retry_wait_seconds = 5
 
-            # Wait for page to render (SuiteCommerce apps need time to load)
-            time.sleep(3)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Navigate to product page
+                self._page.goto(full_url, wait_until="networkidle", timeout=30000)
 
-            # Get page HTML
-            html = self._page.content()
-            log("  ✓ Page loaded successfully")
+                # Wait for page to render (SuiteCommerce apps need time to load)
+                time.sleep(3)
 
-            return html
+                # Get page HTML
+                html = self._page.content()
 
-        except PlaywrightTimeoutError:
-            log(f"  ❌ Timeout loading page: {product_url}")
-            return None
-        except Exception as e:
-            log(f"  ❌ Error fetching page: {e}")
-            return None
+                # Log success (with retry info if applicable)
+                if attempt == 1:
+                    log("  ✓ Page loaded successfully")
+                else:
+                    log(f"  ✓ Page loaded successfully (attempt {attempt}/{max_attempts})")
+
+                return html
+
+            except PlaywrightTimeoutError:
+                if attempt < max_attempts:
+                    log(f"  ⚠ Timeout on attempt {attempt}/{max_attempts}, retrying in {retry_wait_seconds}s...")
+                    time.sleep(retry_wait_seconds)
+                else:
+                    log(f"  ❌ Timeout loading page after {max_attempts} attempts: {product_url}")
+                    return None
+
+            except Exception as e:
+                if attempt < max_attempts:
+                    log(f"  ⚠ Error on attempt {attempt}/{max_attempts}: {e}, retrying in {retry_wait_seconds}s...")
+                    time.sleep(retry_wait_seconds)
+                else:
+                    log(f"  ❌ Error fetching page after {max_attempts} attempts: {e}")
+                    return None
+
+        return None
 
     def parse_product_page(self, html: str, log: Callable = print) -> Dict[str, Any]:
         """

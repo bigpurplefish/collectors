@@ -31,6 +31,7 @@ The Cambridge collector:
 - ✅ Cost and price from input file
 - ✅ Graceful error handling with detailed reporting
 - ✅ Data validation and missing field tracking
+- ✅ Portal page fetch retry logic (3 attempts with 5s wait)
 
 ---
 
@@ -819,6 +820,11 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.3.1 (2025-11-18)
+- **Added:** Portal page fetch retry logic (3 attempts with 5-second wait between retries)
+- **Improved:** Better handling of intermittent page load failures
+- **Improved:** Retry status logging shows attempt number and retry countdown
 
 ### v1.3.0 (2025-11-18)
 - **Changed:** Simplified cost/price handling to only use Piece or Sq Ft units
