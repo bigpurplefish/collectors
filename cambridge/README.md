@@ -32,6 +32,7 @@ The Cambridge collector:
 - ✅ Graceful error handling with detailed reporting
 - ✅ Data validation and missing field tracking
 - ✅ Portal page fetch retry logic (3 attempts with 5s wait)
+- ✅ Hide online price metafield (all products marked to hide prices online)
 
 ---
 
@@ -255,6 +256,34 @@ Main JSON file containing Shopify products in GraphQL 2025-10 format:
 1. Product images from dealer portal (all colors)
 2. Hero image from public website
 3. Gallery images from public website
+
+**Product Metafields:**
+
+All Cambridge products include the following metafield:
+
+```json
+{
+  "namespace": "custom",
+  "key": "hide_online_price",
+  "value": "true",
+  "type": "boolean"
+}
+```
+
+This metafield allows you to hide prices on your Shopify online store while keeping them visible in Shopify POS. To implement this in your theme, add this Liquid code where prices are displayed:
+
+```liquid
+{%- unless product.metafields.custom.hide_online_price -%}
+  {{ product.price | money }}
+{%- else -%}
+  <span>Contact us for pricing</span>
+{%- endunless -%}
+```
+
+**Note:** This only affects the online store display. Prices remain visible in:
+- Shopify Admin
+- Shopify POS
+- Order confirmations and invoices
 
 ### 2. Processing Report (`output_report.json`)
 Detailed report of processing results, failures, and warnings:
@@ -820,6 +849,11 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.4.0 (2025-11-18)
+- **Added:** Product-level metafield `hide_online_price` to hide prices on online store
+- **Changed:** All Cambridge products now marked with `hide_online_price = true`
+- **Documented:** Liquid theme code for implementing price hiding
 
 ### v1.3.1 (2025-11-18)
 - **Added:** Portal page fetch retry logic (3 attempts with 5-second wait between retries)

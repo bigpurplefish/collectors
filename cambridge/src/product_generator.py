@@ -585,7 +585,14 @@ class CambridgeProductGenerator:
         """
         metafields = []
 
-        # No metafields currently needed for Cambridge products
-        # (Specifications moved to descriptionHTML)
+        # Hide online prices for all Cambridge products (still visible in POS)
+        # This allows theme to conditionally hide prices on online store while
+        # keeping them visible in Shopify POS for in-person sales
+        metafields.append({
+            "namespace": "custom",
+            "key": "hide_online_price",
+            "value": "true",
+            "type": "boolean"
+        })
 
         return metafields
