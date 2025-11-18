@@ -139,6 +139,8 @@ playwright install chromium
 - **Portal Index** (`cache/portal_product_index.json`):
   - **Two-stage API approach** (no Playwright for index building):
     1. Fetch category URLs via navigation API (unauthenticated)
+       - Extracts categories at level >= 2 with at least 2 URL slashes
+       - Includes both level 2 (e.g., `/wall-plus/edgestone-plus`) and level 3+ categories
     2. Authenticate with Playwright, query search API per category
   - Extracts individual products with SKU, price, stock, images
   - Used for matching exact color variants

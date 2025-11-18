@@ -262,8 +262,10 @@ class CambridgePortalIndexBuilder:
             fullurl = category.get("fullurl", "")
             level = int(category.get("level", "1"))
 
-            # Product category pages are level >= 3 and have a fullurl
-            is_product_category = level >= 3 and fullurl and fullurl.count("/") >= 3
+            # Product category pages are level >= 2 and have a fullurl with at least 2 slashes
+            # Level 2: /wall-plus/edgestone-plus (2 slashes)
+            # Level 3: /pavers/sherwood/sherwood-ledgestone-3-pc-design-kit (3+ slashes)
+            is_product_category = level >= 2 and fullurl and fullurl.count("/") >= 2
 
             if is_product_category and fullurl not in category_urls:
                 category_urls.append(fullurl)
