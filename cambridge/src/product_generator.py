@@ -103,9 +103,9 @@ class CambridgeProductGenerator:
             "vendor": "Cambridge Pavers",
             "status": "ACTIVE",
             "options": self._generate_options(variant_records, portal_data_by_color),
+            "metafields": self._generate_metafields(public_data),
             "variants": self._generate_variants(variant_records, portal_data_by_color, title),
             "images": self._generate_images(public_data, portal_data_by_color, title, variant_records),
-            "metafields": self._generate_metafields(public_data),
         }
 
         return product
@@ -424,26 +424,27 @@ class CambridgeProductGenerator:
         images = []
         position = 1
 
-        # Determine all unit_of_sale options from input records
-        unit_options = set()
+        # Determine unit for each color (Piece priority, Sq Ft fallback)
+        # Each color gets exactly ONE unit - match the logic from _generate_variants
+        color_units = {}
         for record in variant_records:
-            # Check which unit types have cost/price data
-            if not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
-                unit_options.add("Sq Ft")
-            if not math.isnan(record.get("cost_per_kit", float('nan'))) and not math.isnan(record.get("price_per_kit", float('nan'))):
-                unit_options.add("Kit")
-            if not math.isnan(record.get("cost_per_cube", float('nan'))) and not math.isnan(record.get("price_per_cube", float('nan'))):
-                unit_options.add("Cube")
-            if not math.isnan(record.get("cost_per_piece", float('nan'))) and not math.isnan(record.get("price_per_piece", float('nan'))):
-                unit_options.add("Piece")
-            if not math.isnan(record.get("cost_per_layer", float('nan'))) and not math.isnan(record.get("price_per_layer", float('nan'))):
-                unit_options.add("Layer")
-            if not math.isnan(record.get("cost_per_band", float('nan'))) and not math.isnan(record.get("price_per_band", float('nan'))):
-                unit_options.add("Band")
+            color = record.get("color", "").strip()
 
-        # Sort unit options in the specified order
-        unit_order = ["Sq Ft", "Kit", "Cube", "Piece", "Layer", "Band"]
-        sorted_units = [unit for unit in unit_order if unit in unit_options]
+            # Check Piece first (priority)
+            piece_cost = record.get("cost_per_piece", float('nan'))
+            piece_price = record.get("price_per_piece", float('nan'))
+            if not math.isnan(piece_cost) and not math.isnan(piece_price):
+                color_units[color] = "Piece"
+            # Fall back to Sq Ft
+            elif not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
+                color_units[color] = "Sq Ft"
+
+        # Get unique units used across all colors (for alt tag generation)
+        sorted_units = []
+        if "Piece" in color_units.values():
+            sorted_units.append("Piece")
+        if "Sq Ft" in color_units.values():
+            sorted_units.append("Sq Ft")
 
         # Get first color for public site images
         first_color = variant_records[0].get("color", "") if variant_records else ""
@@ -529,12 +530,17 @@ class CambridgeProductGenerator:
                 seen_colors.add(color)
 
         # For each color + unit combination (each variant)
+        # Each color has exactly ONE unit (Piece or Sq Ft) based on color_units mapping
         for color in colors_in_order:
-            for unit in sorted_units:
-                # Add images for this specific variant (color + unit combination)
-                # Order: portal images for this color, then hero, then lifestyle
+            # Only generate images for the unit this color actually has
+            if color not in color_units:
+                continue
+            unit = color_units[color]
 
-                for img_info in unique_images:
+            # Add images for this specific variant (color + unit combination)
+            # Order: portal images for this color, then hero, then lifestyle
+
+            for img_info in unique_images:
                     img_url = img_info["url"]
                     img_type = img_info["type"]
                     img_color = img_info["color"]

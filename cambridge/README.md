@@ -27,8 +27,9 @@ The Cambridge collector:
 - ✅ Shopify variant image filtering (alt tag generation)
 - ✅ Image URL cleaning and deduplication
 - ✅ Standard weight fields (value + unit)
-- ✅ Simplified unit logic (Piece priority, Sq Ft fallback)
+- ✅ Simplified unit logic (Piece priority, Sq Ft fallback - one unit per color)
 - ✅ Cost and price from input file
+- ✅ Image alt tags match actual variant options (no unused unit combinations)
 - ✅ Graceful error handling with detailed reporting
 - ✅ Data validation and missing field tracking
 - ✅ Portal page fetch retry logic (3 attempts with 5s wait)
@@ -849,6 +850,12 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.5.0 (2025-11-19)
+- **Fixed:** Alt tag generation now only creates tags for Piece or Sq Ft (removed Kit, Cube, Layer, Band)
+- **Fixed:** Each color now only generates alt tags for its actual unit (not all possible units)
+- **Improved:** Output JSON structure now shows metafields before variants for easier human review
+- **Improved:** Image alt tags now accurately match variant options (one unit per color)
 
 ### v1.4.0 (2025-11-18)
 - **Added:** Product-level metafield `hide_online_price` to hide prices on online store
