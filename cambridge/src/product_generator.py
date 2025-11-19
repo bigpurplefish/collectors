@@ -49,27 +49,28 @@ class CambridgeProductGenerator:
         status_fn: Optional[Callable] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Group input records by title.
+        Group input records by portal_title.
 
-        Records with the same title are color variants of one product.
+        Records with the same portal_title are color variants of one product.
 
         Args:
             records: List of input records
             status_fn: Status callback function
 
         Returns:
-            Dictionary mapping title -> list of variant records
+            Dictionary mapping portal_title -> list of variant records
         """
         grouped = defaultdict(list)
 
         for record in records:
-            title = record.get("title", "").strip()
-            if title:
-                grouped[title].append(record)
+            # Group by portal_title (all records should have this)
+            portal_title = record.get("portal_title", "").strip()
+            if portal_title:
+                grouped[portal_title].append(record)
 
         log_and_status(
             status_fn,
-            msg=f"Grouped {len(records)} records into {len(grouped)} product families (variant grouping by title)",
+            msg=f"Grouped {len(records)} records into {len(grouped)} product families (variant grouping by portal_title)",
             ui_msg=f"Grouped {len(records)} records into {len(grouped)} product families"
         )
 

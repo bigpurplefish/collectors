@@ -294,24 +294,22 @@ class CambridgeCollector:
         self,
         title: str,
         color: str,
-        log: Callable = print,
-        title_alt: str = ""
+        log: Callable = print
     ) -> Dict[str, Any]:
         """
         Collect data from dealer portal.
 
         Args:
-            title: Product title to search for
-            color: Color variant (portal URLs don't include color)
+            title: Portal title to search for (from portal_title field)
+            color: Color variant (used for exact match: "[portal_title] [color]")
             log: Logging function
-            title_alt: Alternate title to use as fallback (optional)
 
         Returns:
             Dictionary with portal data
         """
         try:
-            # Search portal index for product URL (with alternate title fallback)
-            product = self.portal_searcher.find_product_by_title_and_color(title, color, log, title_alt)
+            # Search portal index for product URL using exact match on "[portal_title] [color]"
+            product = self.portal_searcher.find_product_by_title_and_color(title, color, log)
 
             if not product:
                 log("  ❌ Product not found in portal index")

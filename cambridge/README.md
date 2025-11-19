@@ -14,10 +14,10 @@ The Cambridge collector:
 
 **Key Features:**
 - ✅ Cached product index (auto-refreshes if stale)
-- ✅ Fuzzy title matching for product search
-- ✅ Alternate title fallback for portal search
+- ✅ Exact title matching for product search (public_title and portal_title fields)
+- ✅ Automatic skip of public scraping when public_title is empty
 - ✅ Portal-only fallback when public site fails
-- ✅ Automatic variant grouping by title
+- ✅ Automatic variant grouping by portal_title
 - ✅ Automatic SKU generation (cross-collector uniqueness)
 - ✅ Dealer portal authentication (Playwright-based)
 - ✅ Skip/overwrite processing modes
@@ -850,6 +850,16 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.6.0 (2025-11-19)
+- **Changed:** Input file format now uses `public_title` and `portal_title` instead of `title` and `alt_title`
+- **Changed:** Public search now uses exact match on `public_title` (no more fuzzy matching)
+- **Changed:** Portal search now uses exact match on `portal_title + color` (no more fuzzy matching or alt_title fallback)
+- **Changed:** Products grouped by `portal_title` instead of generic `title`
+- **Added:** Automatic skip of public scraping when `public_title` is empty/NaN
+- **Improved:** Simpler search logic with exact matching for better accuracy
+- **Removed:** Fuzzy matching threshold configuration (no longer needed)
+- **Removed:** `title_alt` parameter from collector methods
 
 ### v1.5.0 (2025-11-19)
 - **Fixed:** Alt tag generation now only creates tags for Piece or Sq Ft (removed Kit, Cube, Layer, Band)

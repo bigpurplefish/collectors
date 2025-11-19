@@ -268,7 +268,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
         log_and_status(status_fn, "", ui_msg="")
         log_section_header(status_fn, "PROCESSING PRODUCTS")
 
-        for i, (title, variant_records) in enumerate(product_families.items(), 1):
+        for i, (portal_title, variant_records) in enumerate(product_families.items(), 1):
             log_and_status(status_fn, "", ui_msg="")
 
             colors_str = ", ".join([v.get("color", "") for v in variant_records[:3]])
@@ -279,43 +279,64 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 status_fn,
                 current=i,
                 total=len(product_families),
-                item_name=title,
+                item_name=portal_title,
                 details=f"Variants={len(variant_records)}, Colors=[{colors_str}]"
             )
 
             # Skip if already processed
-            if processing_mode == "skip" and title in existing_products:
+            if processing_mode == "skip" and portal_title in existing_products:
                 log_and_status(
                     status_fn,
-                    msg=f"[{i}/{len(product_families)}] Skipping: {title} (already processed, skip mode enabled)",
+                    msg=f"[{i}/{len(product_families)}] Skipping: {portal_title} (already processed, skip mode enabled)",
                     ui_msg="  ⏭ Skipping (already processed)"
                 )
-                products.append(existing_products[title])
+                products.append(existing_products[portal_title])
                 skip_count += 1
                 continue
 
             try:
-                # Find product URL using first variant
+                # Get public_title from first variant (used for public site search)
                 first_variant = variant_records[0]
                 first_color = first_variant.get("color", "")
 
-                product_url = collector.find_product_url(title, first_color, status_fn)
+                # Handle public_title (may be NaN from Excel)
+                public_title_raw = first_variant.get("public_title", "")
+                if isinstance(public_title_raw, float) and math.isnan(public_title_raw):
+                    public_title = ""
+                elif isinstance(public_title_raw, str):
+                    public_title = public_title_raw.strip()
+                else:
+                    public_title = str(public_title_raw).strip() if public_title_raw is not None else ""
+
+                # Find product URL using public_title (skip if empty)
+                product_url = ""
+                if public_title:
+                    product_url = collector.find_product_url(public_title, first_color, status_fn)
+                else:
+                    log_and_status(
+                        status_fn,
+                        msg="  No public_title in input file, skipping public site scraping",
+                        ui_msg="  Skipping public site (no public_title)"
+                    )
 
                 # Initialize public data
                 public_data = {}
                 using_portal_fallback = False
 
-                if not product_url:
+                if not product_url and public_title:
                     log_warning(
                         status_fn,
                         msg="Product URL not found in public index, trying portal as fallback",
-                        details=f"Title: {title}, Color: {first_color}"
+                        details=f"Public Title: {public_title}, Color: {first_color}"
                     )
                     using_portal_fallback = True
                     # Will try to collect portal data below and create product if found
-                else:
+                elif product_url:
                     # Collect public website data
                     public_data = collector.collect_public_data(product_url, status_fn)
+                else:
+                    # No public_title provided, skip public scraping
+                    using_portal_fallback = True
 
                 # Validate public data (skip validation if using portal fallback)
                 is_valid, missing_critical, missing_important = DataValidator.validate_public_data(public_data)
@@ -327,10 +348,10 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                         log_error(
                             status_fn,
                             msg="Public data validation failed - missing critical fields",
-                            details=f"Title: {title}, Missing critical: {', '.join(missing_critical)}, Missing important: {', '.join(missing_important)}"
+                            details=f"Public Title: {public_title}, Missing critical: {', '.join(missing_critical)}, Missing important: {', '.join(missing_important)}"
                         )
                         failures.append({
-                            "title": title,
+                            "title": portal_title,
                             "reason": "Public data validation failed",
                             "colors": [v.get("color", "") for v in variant_records],
                             "search_color": first_color,
@@ -348,7 +369,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                         log_warning(
                             status_fn,
                             msg="Public data is missing some important fields",
-                            details=f"Title: {title}, Missing: {', '.join(missing_important)}"
+                            details=f"Public Title: {public_title}, Missing: {', '.join(missing_important)}"
                         )
 
                 # Collect portal data for each color variant
@@ -360,23 +381,15 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     if not color:
                         continue
 
-                    # Get alternate title from variant record (handle NaN from Excel)
-                    title_alt_raw = variant_record.get("title_alt", "")
-                    if isinstance(title_alt_raw, float) and math.isnan(title_alt_raw):
-                        title_alt = ""
-                    elif isinstance(title_alt_raw, str):
-                        title_alt = title_alt_raw.strip()
-                    else:
-                        title_alt = str(title_alt_raw).strip() if title_alt_raw is not None else ""
-
                     log_and_status(
                         status_fn,
-                        msg=f"  Collecting portal data for color: {color} (product: {title})",
+                        msg=f"  Collecting portal data for color: {color} (product: {portal_title})",
                         ui_msg=f"  Collecting portal data for color: {color}"
                     )
 
-                    # Search portal for product using title and color (with alternate title fallback)
-                    portal_data = collector.collect_portal_data(title, color, status_fn, title_alt)
+                    # Search portal using "[portal_title] [color]" (exact match)
+                    # The portal index has title field that contains "[portal_title] [color]"
+                    portal_data = collector.collect_portal_data(portal_title, color, status_fn)
 
                     # Validate portal data
                     has_data, missing_portal_fields = DataValidator.validate_portal_data(portal_data)
@@ -391,7 +404,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                             log_warning(
                                 status_fn,
                                 msg=warning_msg,
-                                details=f"Title: {title}, Color: {color}"
+                                details=f"Portal Title: {portal_title}, Color: {color}"
                             )
                             portal_warnings.append({
                                 "color": color,
@@ -403,7 +416,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                         log_warning(
                             status_fn,
                             msg=warning_msg,
-                            details=f"Title: {title}, Color: {color}"
+                            details=f"Portal Title: {portal_title}, Color: {color}"
                         )
                         portal_warnings.append({
                             "color": color,
@@ -416,10 +429,10 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     log_error(
                         status_fn,
                         msg="Product not found in public index or portal",
-                        details=f"Title: {title}, searched {len(variant_records)} colors in portal"
+                        details=f"Portal Title: {portal_title}, searched {len(variant_records)} colors in portal"
                     )
                     failures.append({
-                        "title": title,
+                        "title": portal_title,
                         "reason": "Product not found in public index or portal",
                         "colors": [v.get("color", "") for v in variant_records],
                         "search_color": first_color,
@@ -433,12 +446,12 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     log_warning(
                         status_fn,
                         msg="Product generated from portal data only (public site data unavailable)",
-                        details=f"Title: {title}, missing public description, hero image, and gallery"
+                        details=f"Portal Title: {portal_title}, missing public description, hero image, and gallery"
                     )
 
                 # Generate Shopify product
                 product = generator.generate_product(
-                    title=title,
+                    title=portal_title,
                     variant_records=variant_records,
                     public_data=public_data,
                     portal_data_by_color=portal_data_by_color,
@@ -451,7 +464,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 # Track warnings
                 if portal_warnings or using_portal_fallback:
                     warning_entry = {
-                        "title": title,
+                        "title": portal_title,
                         "colors": [v.get("color", "") for v in variant_records],
                         "variant_count": len(variant_records),
                         "product_url": product_url if product_url else "N/A (portal only)",
@@ -468,7 +481,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     warnings.append(warning_entry)
 
                 # Build success message with warnings if present
-                success_details = f"Title: {title}, Variants: {len(product['variants'])}, Images: {len(product['images'])}"
+                success_details = f"Portal Title: {portal_title}, Variants: {len(product['variants'])}, Images: {len(product['images'])}"
 
                 warning_suffix = ""
                 if using_portal_fallback:
@@ -488,11 +501,11 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 log_error(
                     status_fn,
                     msg="Error processing product",
-                    details=f"Title: {title}",
+                    details=f"Portal Title: {portal_title}",
                     exc=e
                 )
                 failures.append({
-                    "title": title,
+                    "title": portal_title,
                     "reason": f"Exception during processing: {str(e)}",
                     "colors": [v.get("color", "") for v in variant_records],
                     "variant_count": len(variant_records),

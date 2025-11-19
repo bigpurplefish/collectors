@@ -107,48 +107,21 @@ class CambridgePortalSearcher:
         title_alt: str = ""
     ) -> Optional[Dict[str, Any]]:
         """
-        Find product URL by title and color.
+        Find product URL by exact match on portal_title + color.
 
-        Portal has color-specific variants in the index (e.g., "Sherwood Ledgestone 3-Pc. Design Kit Onyx Natural").
-        Match on both title and color for better accuracy.
-
-        If no match is found with the primary title and title_alt is provided,
-        will attempt to search again using the alternate title.
+        The portal index contains products with title = "[portal_title] [color]".
+        This method performs exact matching on the concatenated string.
 
         Args:
-            title: Product title to search for
+            title: Portal title to search for (from portal_title field)
             color: Color variant to match
             log: Logging function
-            title_alt: Alternate title to use as fallback (optional)
+            title_alt: Deprecated parameter (no longer used)
 
         Returns:
             Product dictionary or None if not found
         """
-        # URL overrides for specific products with incorrect portal index URLs
-        # These products were matched to category pages instead of product pages
-        # Check overrides FIRST, before checking index status
-        url_overrides = {
-            ("Sherwood Ledgestone 3-Pc. Design Kit", "Platinum"): "/product/20784",
-            ("Sherwood Ledgestone 3-Pc. Design Kit Smooth", "Platinum"): "/product/20785",
-        }
-
-        # Check if this product has a URL override
-        override_key = (title, color)
-        if override_key in url_overrides:
-            override_url = url_overrides[override_key]
-            log_success(
-                log,
-                f"Portal product match: '{title} {color}' (URL override)",
-                details=f"Using hardcoded URL override: {override_url}"
-            )
-            return {
-                "title": f"{title} {color}",
-                "url": override_url,
-                "category": "",
-                "is_override": True
-            }
-
-        # If no override, check portal index
+        # Check portal index
         if not self.index:
             log_error(log, "Portal index not loaded", details="Portal index must be loaded before searching")
             return None
@@ -158,76 +131,32 @@ class CambridgePortalSearcher:
             log_error(log, "Portal index is empty", details="No portal products available for matching")
             return None
 
-        # Normalize color for matching (replace "/" with space, handle variations)
-        normalized_color = color.replace("/", " ").strip()
+        # Construct search string: "[portal_title] [color]"
+        search_string = f"{title} {color}".strip()
 
-        # Find best match using fuzzy matching on title + color combined
-        best_match = None
-        best_score = 0.0
+        log_and_status(
+            log,
+            f"Searching portal index for exact match: '{search_string}'",
+            ui_msg=f"Searching portal for: {color}"
+        )
 
+        # Find exact match
         for product in products:
-            product_title = product.get("title", "")
+            product_title = product.get("title", "").strip()
 
-            # Try matching with color included in the search
-            search_text = f"{title} {normalized_color}"
-            score = fuzz.token_sort_ratio(search_text.lower(), product_title.lower())
-
-            if score > best_score:
-                best_score = score
-                best_match = product
-
-        # Check if best match exceeds threshold
-        if best_match and best_score >= self.threshold:
-            log_success(
-                log,
-                f"Portal product match: '{best_match['title']}'",
-                details=f"Matched '{title}' + '{color}' with score: {best_score}, threshold: {self.threshold}"
-            )
-            return best_match
-
-        # If no match and alternate title provided, try searching with alternate title
-        if title_alt and title_alt.strip():
-            log_and_status(
-                log,
-                f"Primary title '{title}' not found, trying alternate title: '{title_alt}'",
-                ui_msg=f"Trying alternate title: '{title_alt}'"
-            )
-
-            # Reset for alternate title search
-            best_match_alt = None
-            best_score_alt = 0.0
-
-            for product in products:
-                product_title = product.get("title", "")
-
-                # Try matching with alternate title + color
-                search_text_alt = f"{title_alt} {normalized_color}"
-                score_alt = fuzz.token_sort_ratio(search_text_alt.lower(), product_title.lower())
-
-                if score_alt > best_score_alt:
-                    best_score_alt = score_alt
-                    best_match_alt = product
-
-            # Check if alternate title match exceeds threshold
-            if best_match_alt and best_score_alt >= self.threshold:
+            if product_title == search_string:
                 log_success(
                     log,
-                    f"Portal product match using alternate title: '{best_match_alt['title']}'",
-                    details=f"Matched '{title_alt}' + '{color}' with score: {best_score_alt}, threshold: {self.threshold}"
+                    f"Portal product exact match: '{product_title}'",
+                    details=f"Matched '{search_string}' exactly"
                 )
-                return best_match_alt
+                return product
 
-            log_and_status(
-                log,
-                f"No portal product match found for alternate title '{title_alt}' + '{color}' (best score: {best_score_alt})",
-                ui_msg=f"No portal match with alternate title (score: {best_score_alt})"
-            )
-
-        else:
-            log_and_status(
-                log,
-                f"No portal product match found for '{title}' + '{color}' (best score: {best_score}, threshold: {self.threshold})",
-                ui_msg=f"No portal match (score: {best_score})"
-            )
+        # No exact match found
+        log_and_status(
+            log,
+            f"No portal product found for exact match: '{search_string}'",
+            ui_msg=f"No portal match for: {search_string}"
+        )
 
         return None

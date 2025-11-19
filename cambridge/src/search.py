@@ -61,13 +61,14 @@ class CambridgeSearcher:
         log: Callable = print
     ) -> Optional[Dict[str, Any]]:
         """
-        Find product in index by title and color.
+        Find product in index by exact match on public_title.
 
-        Uses fuzzy matching on title, then checks if product has the requested color.
+        The public index contains products with title field matching public_title from input file.
+        This method performs exact matching.
 
         Args:
-            title: Product title to search for
-            color: Color variant to find
+            title: Public title to search for (from public_title field)
+            color: Color variant (not used for matching, kept for signature compatibility)
             log: Logging function
 
         Returns:
@@ -82,60 +83,31 @@ class CambridgeSearcher:
             log_error(log, "Product index is empty", details="No products available for matching")
             return None
 
-        # Strip color family prefix from title for public index search
-        # Portal titles have color families like "Sherwood", but public index doesn't
-        color_families = ["Sherwood", "Crusader", "Excalibur", "Kingscourt", "Roundtable"]
-        search_title = title
-        for family in color_families:
-            if title.startswith(family + " "):
-                search_title = title[len(family) + 1:]  # Remove "Family " prefix
-                log_and_status(
-                    log,
-                    f"Stripped color family '{family}' from search title: '{search_title}'",
-                    ui_msg=f"Searching for: {search_title}"
-                )
-                break
-
         log_and_status(
             log,
-            f"Searching for: title='{search_title}' (original: '{title}'), color='{color}'",
-            ui_msg=f"Searching: {search_title}, {color}"
+            f"Searching public index for exact match: '{title}'",
+            ui_msg=f"Searching: {title}"
         )
 
-        # Phase 1: Fuzzy match on title (using search_title without color family prefix)
-        best_match = None
-        best_score = 0
-
+        # Find exact match on title
         for product in products:
-            product_title = product.get("title", "")
+            product_title = product.get("title", "").strip()
 
-            # Calculate fuzzy match score using ratio (better for exact matches than token_sort_ratio)
-            # ratio() is better at preferring exact matches and penalizes extra words
-            score = fuzz.ratio(search_title.lower(), product_title.lower())
+            if product_title == title:
+                log_success(
+                    log,
+                    f"Public site exact match: '{product_title}'",
+                    details=f"Matched '{title}' exactly"
+                )
+                return product
 
-            if score > best_score:
-                best_score = score
-                best_match = product
-
-        if not best_match or best_score < self.fuzzy_match_threshold:
-            log_and_status(
-                log,
-                f"No title match found (best score: {best_score}, threshold: {self.fuzzy_match_threshold})",
-                ui_msg=f"No match found (score: {best_score})"
-            )
-            return None
-
-        log_success(
+        # No exact match found
+        log_and_status(
             log,
-            f"Title match found: '{best_match.get('title')}'",
-            details=f"Match score: {best_score}, threshold: {self.fuzzy_match_threshold}"
+            f"No public site product found for exact match: '{title}'",
+            ui_msg=f"No match found for: {title}"
         )
-
-        # Phase 2: Check if product has requested color
-        # Note: The index may not include color information
-        # We'll return the matched product and let the parser verify colors
-
-        return best_match
+        return None
 
     def find_product_url(
         self,
