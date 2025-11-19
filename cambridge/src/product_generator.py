@@ -260,7 +260,7 @@ class CambridgeProductGenerator:
             sq_ft_per_cube = record.get("sq_ft_per_cube", 0) or 0
             pieces_per_cube = record.get("pieces_per_cube", 0) or 0
 
-            # Determine which unit to use (Piece priority, Sq Ft fallback)
+            # Determine which unit to use (Piece priority, Kit second, Sq Ft fallback)
             unit_config = None
 
             # Check Piece first (priority)
@@ -275,7 +275,20 @@ class CambridgeProductGenerator:
                     "conversion_name": "pieces_per_cube"
                 }
 
-            # Fall back to Sq Ft if Piece not available
+            # Check Kit second (if Piece not available)
+            if unit_config is None:
+                kit_cost = record.get("cost_per_kit", float('nan'))
+                kit_price = record.get("price_per_kit", float('nan'))
+                if not math.isnan(kit_cost) and not math.isnan(kit_price):
+                    unit_config = {
+                        "name": "Kit",
+                        "cost": kit_cost,
+                        "price": kit_price,
+                        "conversion_factor": 1,  # Weight is already per cube/kit, no conversion needed
+                        "conversion_name": "kit (no conversion)"
+                    }
+
+            # Fall back to Sq Ft if Piece and Kit not available
             if unit_config is None:
                 sqft_cost = record.get("sq_ft_cost", float('nan'))
                 sqft_price = record.get("sq_ft_price", float('nan'))
@@ -292,8 +305,8 @@ class CambridgeProductGenerator:
             if unit_config is None:
                 continue
 
-            # Validate conversion factor exists
-            if unit_config["conversion_factor"] == 0:
+            # Validate conversion factor exists (skip validation for Kit since it uses 1)
+            if unit_config["name"] != "Kit" and unit_config["conversion_factor"] == 0:
                 raise ValueError(
                     f"Product '{product_title}' color '{color}' has {unit_config['name']} cost/price data "
                     f"but {unit_config['conversion_name']} is zero or missing. Cannot calculate weight."
@@ -425,7 +438,7 @@ class CambridgeProductGenerator:
         images = []
         position = 1
 
-        # Determine unit for each color (Piece priority, Sq Ft fallback)
+        # Determine unit for each color (Piece priority, Kit second, Sq Ft fallback)
         # Each color gets exactly ONE unit - match the logic from _generate_variants
         color_units = {}
         for record in variant_records:
@@ -436,6 +449,9 @@ class CambridgeProductGenerator:
             piece_price = record.get("price_per_piece", float('nan'))
             if not math.isnan(piece_cost) and not math.isnan(piece_price):
                 color_units[color] = "Piece"
+            # Check Kit second
+            elif not math.isnan(record.get("cost_per_kit", float('nan'))) and not math.isnan(record.get("price_per_kit", float('nan'))):
+                color_units[color] = "Kit"
             # Fall back to Sq Ft
             elif not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
                 color_units[color] = "Sq Ft"
@@ -444,6 +460,8 @@ class CambridgeProductGenerator:
         sorted_units = []
         if "Piece" in color_units.values():
             sorted_units.append("Piece")
+        if "Kit" in color_units.values():
+            sorted_units.append("Kit")
         if "Sq Ft" in color_units.values():
             sorted_units.append("Sq Ft")
 

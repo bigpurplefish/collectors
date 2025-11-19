@@ -27,7 +27,7 @@ The Cambridge collector:
 - ✅ Shopify variant image filtering (alt tag generation)
 - ✅ Image URL cleaning and deduplication
 - ✅ Standard weight fields (value + unit)
-- ✅ Simplified unit logic (Piece priority, Sq Ft fallback - one unit per color)
+- ✅ Simplified unit logic (Piece > Kit > Sq Ft priority - one unit per color)
 - ✅ Cost and price from input file
 - ✅ Image alt tags match actual variant options (no unused unit combinations)
 - ✅ Graceful error handling with detailed reporting
@@ -850,6 +850,15 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.7.0 (2025-11-19)
+- **Added:** Kit as supported unit of sale (priority: Piece > Kit > Sq Ft)
+- **Fixed:** Weight calculation now correctly adjusts based on unit of sale
+  - Sq Ft: weight divided by `sq_ft_per_cube`
+  - Piece: weight divided by `pieces_per_cube`
+  - Kit: weight used as-is (already per cube/kit, no conversion)
+- **Improved:** Weight conversion logic with proper handling for each unit type
+- **Updated:** Image alt tag generation includes Kit variants
 
 ### v1.6.0 (2025-11-19)
 - **Changed:** Input file format now uses `public_title` and `portal_title` instead of `title` and `alt_title`
