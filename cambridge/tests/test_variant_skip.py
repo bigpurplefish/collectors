@@ -261,6 +261,110 @@ def test_variant_skip_logic():
     return True
 
 
+def test_variant_order_preservation():
+    """Test that variant order from spreadsheet is preserved in output."""
+    print("")
+    print("=" * 80)
+    print("TEST: Variant Order Preservation")
+    print("=" * 80)
+    print("")
+
+    # Simulate existing product with variants in specific order
+    # Order: Red/Piece, Blue/Piece, Green/Piece
+    existing_product = {
+        "title": "Test Product",
+        "variants": [
+            {"option1": "Red", "option2": "Piece", "sku": "TEST-RED-P", "price": "10.00", "cost": "5.00"},
+            {"option1": "Blue", "option2": "Piece", "sku": "TEST-BLUE-P", "price": "15.00", "cost": "7.50"},
+            {"option1": "Green", "option2": "Piece", "sku": "TEST-GREEN-P", "price": "12.00", "cost": "6.00"},
+        ]
+    }
+
+    # Simulate input records in same order, with one new variant in middle
+    # Order: Red/Piece (skip), Blue/Piece (skip), Yellow/Piece (new), Green/Piece (skip)
+    input_records = [
+        {"color": "Red", "cost_per_piece": 2.99, "price_per_piece": 3.99},     # Position 0 - skip
+        {"color": "Blue", "cost_per_piece": 7.50, "price_per_piece": 8.50},    # Position 1 - skip
+        {"color": "Yellow", "cost_per_piece": 9.00, "price_per_piece": 10.00}, # Position 2 - new
+        {"color": "Green", "cost_per_piece": 6.00, "price_per_piece": 7.00},   # Position 3 - skip
+    ]
+
+    # Extract existing variants by (color, unit)
+    existing_variants_by_color_unit = extract_existing_variants_by_color_unit(existing_product)
+
+    # Determine which variants to skip vs process
+    variants_to_skip = set()
+    variants_to_process = []
+
+    for record in input_records:
+        color = record.get("color", "").strip()
+        if not color:
+            continue
+
+        unit = determine_variant_unit(record)
+        if not unit:
+            variants_to_process.append(record)
+            continue
+
+        variant_key = (color, unit)
+
+        if variant_key in existing_variants_by_color_unit:
+            existing_variant = existing_variants_by_color_unit[variant_key]
+            if variant_has_portal_data(existing_variant):
+                variants_to_skip.add(variant_key)
+            else:
+                variants_to_process.append(record)
+        else:
+            variants_to_process.append(record)
+
+    # Verify skip/process determination
+    assert variants_to_skip == {("Red", "Piece"), ("Blue", "Piece"), ("Green", "Piece")}
+    assert len(variants_to_process) == 1
+    assert variants_to_process[0]["color"] == "Yellow"
+
+    # Simulate rebuilding ordered variants list (like processor.py does)
+    # Create mock generated variant for Yellow
+    generated_variants = [
+        {"option1": "Yellow", "option2": "Piece", "sku": "TEST-YELLOW-P", "price": "10.00", "cost": "9.00"}
+    ]
+    generated_variants_map = {("Yellow", "Piece"): generated_variants[0]}
+
+    # Rebuild in original order
+    ordered_variants = []
+    for record in input_records:
+        color = record.get("color", "").strip()
+        unit = determine_variant_unit(record)
+        variant_key = (color, unit)
+
+        if variant_key in variants_to_skip and variant_key in existing_variants_by_color_unit:
+            ordered_variants.append(existing_variants_by_color_unit[variant_key])
+        elif variant_key in generated_variants_map:
+            ordered_variants.append(generated_variants_map[variant_key])
+
+    # Verify order is preserved: Red, Blue, Yellow, Green
+    assert len(ordered_variants) == 4
+    assert ordered_variants[0]["option1"] == "Red"    # Position 0 - from existing
+    assert ordered_variants[1]["option1"] == "Blue"   # Position 1 - from existing
+    assert ordered_variants[2]["option1"] == "Yellow" # Position 2 - newly generated
+    assert ordered_variants[3]["option1"] == "Green"  # Position 3 - from existing
+
+    print("✓ Original spreadsheet order: Red/Piece, Blue/Piece, Yellow/Piece, Green/Piece")
+    print("✓ Variants in output (in order):")
+    for i, variant in enumerate(ordered_variants):
+        color = variant["option1"]
+        unit = variant["option2"]
+        source = "existing" if (color, unit) in variants_to_skip else "generated"
+        print(f"    {i+1}. {color}/{unit} ({source})")
+
+    print("")
+    print("=" * 80)
+    print("✓ TEST PASSED: Variant order preserved from spreadsheet")
+    print("=" * 80)
+    print("")
+
+    return True
+
+
 if __name__ == "__main__":
     try:
         print("")
@@ -271,6 +375,7 @@ if __name__ == "__main__":
         test_variant_has_portal_data()
         test_determine_variant_unit()
         test_variant_skip_logic()
+        test_variant_order_preservation()
 
         print("")
         print("=" * 80)
@@ -280,6 +385,7 @@ if __name__ == "__main__":
         print("Check Variant Has Portal Data: ✓ PASSED")
         print("Determine Variant Unit: ✓ PASSED")
         print("Variant Skip Logic by Color+Unit: ✓ PASSED")
+        print("Variant Order Preservation: ✓ PASSED")
         print("=" * 80)
         print("")
 
