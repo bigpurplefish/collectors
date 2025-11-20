@@ -287,7 +287,7 @@ def build_gui():
     help_icon.pack(side="left")
     ToolTip(
         help_icon,
-        text="Choose how to handle products that have already been processed.\n\nSkip: Skip products that already have processed data.\nOverwrite: Re-process all products, overwriting existing data.\n\nTip: Use 'Skip' to resume interrupted processing.",
+        text="Choose how to handle variants that have already been processed.\n\nSkip: Skip variants that already have portal data (allows adding new colors).\nOverwrite: Re-process all variants, overwriting existing data.\n\nTip: Use 'Skip' to resume interrupted processing or add new colors to existing products.",
         bootstyle="info"
     )
     tb.Label(label_frame, text=":", anchor="w").pack(side="left")
@@ -299,7 +299,7 @@ def build_gui():
 
     skip_radio = tb.Radiobutton(
         mode_frame,
-        text="Skip Processed Products",
+        text="Skip Processed Variants",
         variable=mode_var,
         value="skip",
         bootstyle="primary"

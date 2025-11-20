@@ -34,7 +34,14 @@ python3 tests/test_portal_search.py
 PORTAL_SEARCH_RESULT=$?
 echo ""
 
-# Test 3: Index Builder (slow, optional)
+# Test 3: Variant Skip Tests (fast)
+echo "Running Variant-Level Skip Tests (fast)..."
+echo "--------------------------------------------------------------------------------"
+python3 tests/test_variant_skip.py
+VARIANT_SKIP_RESULT=$?
+echo ""
+
+# Test 4: Index Builder (slow, optional)
 if [ "$1" == "--all" ]; then
     echo "Running Index Builder Tests (slow)..."
     echo "--------------------------------------------------------------------------------"
@@ -90,6 +97,12 @@ else
     echo "✗ Portal Search Tests: FAILED"
 fi
 
+if [ $VARIANT_SKIP_RESULT -eq 0 ]; then
+    echo "✓ Variant Skip Tests: PASSED"
+else
+    echo "✗ Variant Skip Tests: FAILED"
+fi
+
 if [ "$1" == "--all" ]; then
     if [ $INDEX_RESULT -eq 0 ]; then
         echo "✓ Index Builder Tests: PASSED"
@@ -117,7 +130,7 @@ fi
 echo "================================================================================"
 
 # Exit with failure if any test failed
-if [ $PARSER_RESULT -ne 0 ] || [ $PORTAL_SEARCH_RESULT -ne 0 ] || [ $INDEX_RESULT -ne 0 ] || [ $PORTAL_INDEX_RESULT -ne 0 ] || [ $WORKFLOW_RESULT -ne 0 ]; then
+if [ $PARSER_RESULT -ne 0 ] || [ $PORTAL_SEARCH_RESULT -ne 0 ] || [ $VARIANT_SKIP_RESULT -ne 0 ] || [ $INDEX_RESULT -ne 0 ] || [ $PORTAL_INDEX_RESULT -ne 0 ] || [ $WORKFLOW_RESULT -ne 0 ]; then
     exit 1
 fi
 

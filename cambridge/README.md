@@ -510,15 +510,33 @@ The SKU registry is stored at `/collectors/cache/sku_registry.json` (parent-leve
 
 ## Processing Modes
 
-### Skip Mode (Default)
-- Skips products that already exist in output file
-- Resume interrupted processing
-- Safe for incremental updates
+### Skip Mode (Default) - Variant-Level
+
+**As of v1.8.0**, skip mode operates at the **variant level** (not product level):
+
+- **Skips individual variants** that already have portal data (SKU, price, cost)
+- **Allows adding new colors** to existing products without re-processing existing variants
+- **Resume interrupted processing** - picks up where you left off
+- **Safe for incremental updates** - preserves work if interrupted
+
+**Example Use Case:**
+```
+Existing output has: Product X with Red and Blue variants
+Input file now has: Product X with Red, Blue, and Green variants
+Result: Skips Red and Blue (existing), processes Green (new)
+```
+
+**Variant-Level Statistics:**
+Skip mode now reports:
+- Successful variants (newly processed)
+- Skipped variants (already have portal data)
+- Failed variants (missing portal data)
 
 ### Overwrite Mode
-- Re-processes all products
-- Overwrites existing data
-- Use when updating all products
+- **Re-processes all products** and variants
+- **Overwrites existing data** for products in the processing range
+- **Preserves unprocessed products** from previous runs (incremental saving)
+- Use when updating existing products with fresh data
 
 ---
 
@@ -601,6 +619,10 @@ After processing, a detailed report (`output_report.json`) is generated containi
    - Skipped products (already in output file)
    - Failed products (missing critical data)
    - Products with warnings (incomplete portal data)
+   - **Variant-level statistics** (v1.8.0+):
+     - Successful variants (newly processed)
+     - Skipped variants (already have portal data)
+     - Failed variants (missing portal data)
 
 2. **Failures List**
    - Products that were skipped
@@ -850,6 +872,22 @@ For issues or questions:
 ---
 
 ## Version History
+
+### v1.8.0 (2025-11-20)
+- **Changed:** Skip mode now operates at **variant level** (not product level)
+  - Skips individual variants that already have portal data (SKU, price, cost)
+  - Allows adding new colors to existing products without re-processing existing variants
+  - Portal data collection now checks each color individually
+  - Merges newly processed variants with existing variants from skipped colors
+  - Preserves images for skipped variants
+- **Changed:** GUI label renamed from "Skip Processed Products" to "Skip Processed Variants"
+- **Added:** Variant-level statistics in processing summary
+  - Successful variants (newly processed)
+  - Skipped variants (already have portal data)
+  - Failed variants (missing portal data)
+- **Added:** Variant-level failure reporting in logs
+  - Each color failure now logged individually: "❌ Variant failed: No portal data found for color 'X'"
+- **Added:** New test suite: `tests/test_variant_skip.py` for variant-level skip logic
 
 ### v1.7.3 (2025-11-20)
 - **Added:** Incremental saving for both skip and overwrite modes

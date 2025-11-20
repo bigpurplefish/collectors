@@ -139,6 +139,45 @@ def save_output_file(products: List[Dict[str, Any]], output_file: str, status_fn
         raise
 
 
+def extract_existing_variants_by_color(product: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Extract existing variants from a product, grouped by color.
+
+    Args:
+        product: Product dictionary from output file
+
+    Returns:
+        Dictionary mapping color (option1) to list of variants with that color
+    """
+    variants_by_color = {}
+    for variant in product.get("variants", []):
+        color = variant.get("option1", "").strip()
+        if color:
+            if color not in variants_by_color:
+                variants_by_color[color] = []
+            variants_by_color[color].append(variant)
+    return variants_by_color
+
+
+def variant_has_portal_data(variants: List[Dict[str, Any]]) -> bool:
+    """
+    Check if any variant in the list has portal data (SKU, price, cost).
+
+    Args:
+        variants: List of variants for a specific color
+
+    Returns:
+        True if at least one variant has SKU, price, and cost
+    """
+    for variant in variants:
+        has_sku = bool(variant.get("sku"))
+        has_price = bool(variant.get("price"))
+        has_cost = bool(variant.get("cost"))
+        if has_sku and has_price and has_cost:
+            return True
+    return False
+
+
 def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = None):
     """
     Main processing workflow.
@@ -275,6 +314,9 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
         success_count = 0
         skip_count = 0
         fail_count = 0
+        variant_success_count = 0  # Track successful variants
+        variant_skip_count = 0  # Track skipped variants (existing data)
+        variant_fail_count = 0  # Track failed variants (missing portal data)
 
         log_and_status(status_fn, "", ui_msg="")
         log_section_header(status_fn, "PROCESSING PRODUCTS")
@@ -294,16 +336,58 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 details=f"Variants={len(variant_records)}, Colors=[{colors_str}]"
             )
 
-            # Skip if already processed (skip mode only)
+            # Variant-level skip logic (skip mode only)
+            existing_variants_by_color = {}
+            colors_to_skip = set()
+            colors_to_process = set()
+
             if processing_mode == "skip" and portal_title in products_dict:
-                log_and_status(
-                    status_fn,
-                    msg=f"[{i}/{len(product_families)}] Skipping: {portal_title} (already processed, skip mode enabled)",
-                    ui_msg="  ⏭ Skipping (already processed)"
-                )
-                # Product already in dictionary, no need to add again
-                skip_count += 1
-                continue
+                # Extract existing variants grouped by color
+                existing_product = products_dict[portal_title]
+                existing_variants_by_color = extract_existing_variants_by_color(existing_product)
+
+                # Check each input color to see if we should skip it
+                for variant_record in variant_records:
+                    color = variant_record.get("color", "").strip()
+                    if not color:
+                        continue
+
+                    # Check if this color already has portal data
+                    if color in existing_variants_by_color:
+                        existing_variants = existing_variants_by_color[color]
+                        if variant_has_portal_data(existing_variants):
+                            colors_to_skip.add(color)
+                        else:
+                            colors_to_process.add(color)
+                    else:
+                        colors_to_process.add(color)
+
+                # If all colors should be skipped, skip entire product
+                if colors_to_process == set() and colors_to_skip:
+                    log_and_status(
+                        status_fn,
+                        msg=f"[{i}/{len(product_families)}] Skipping: {portal_title} - all {len(colors_to_skip)} variants have portal data",
+                        ui_msg="  ⏭ Skipping (all variants processed)"
+                    )
+                    skip_count += 1
+                    continue
+
+                # Log which colors we're skipping vs processing
+                if colors_to_skip:
+                    log_and_status(
+                        status_fn,
+                        msg=f"  Skipping {len(colors_to_skip)} variants with existing portal data: {', '.join(sorted(list(colors_to_skip))[:3])}{'...' if len(colors_to_skip) > 3 else ''}",
+                        ui_msg=f"  Skipping {len(colors_to_skip)} variants"
+                    )
+                if colors_to_process:
+                    log_and_status(
+                        status_fn,
+                        msg=f"  Processing {len(colors_to_process)} variants: {', '.join(sorted(list(colors_to_process))[:3])}{'...' if len(colors_to_process) > 3 else ''}",
+                        ui_msg=f"  Processing {len(colors_to_process)} new/missing variants"
+                    )
+            else:
+                # Not skip mode or product doesn't exist - process all colors
+                colors_to_process = {v.get("color", "").strip() for v in variant_records if v.get("color", "").strip()}
 
             try:
                 # Get public_title from first variant (used for public site search)
@@ -392,6 +476,16 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     if not color:
                         continue
 
+                    # Skip if this color already has portal data (variant-level skip)
+                    if color in colors_to_skip:
+                        log_and_status(
+                            status_fn,
+                            msg=f"  ⏭ Skipping variant '{color}' (already has portal data)",
+                            ui_msg=f"  ⏭ Skipping variant: {color}"
+                        )
+                        variant_skip_count += 1
+                        continue
+
                     log_and_status(
                         status_fn,
                         msg=f"  Collecting portal data for color: {color} (product: {portal_title})",
@@ -408,6 +502,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
 
                     if has_data:
                         portal_data_by_color[color] = portal_data
+                        variant_success_count += 1
 
                         # Warn if missing important fields
                         if missing_portal_fields:
@@ -423,7 +518,8 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                                 "summary": portal_summary
                             })
                     else:
-                        warning_msg = f"No portal data found for color '{color}'"
+                        variant_fail_count += 1
+                        warning_msg = f"❌ Variant failed: No portal data found for color '{color}'"
                         log_warning(
                             status_fn,
                             msg=warning_msg,
@@ -468,6 +564,38 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     portal_data_by_color=portal_data_by_color,
                     log=status_fn
                 )
+
+                # Merge variants from skipped colors (skip mode only)
+                if colors_to_skip and portal_title in existing_products:
+                    existing_product = existing_products[portal_title]
+                    existing_variants = existing_product.get("variants", [])
+                    existing_images = existing_product.get("images", [])
+
+                    # Add variants from skipped colors to the newly generated product
+                    for existing_variant in existing_variants:
+                        variant_color = existing_variant.get("option1", "").strip()
+                        if variant_color in colors_to_skip:
+                            # Add this variant to the product
+                            product["variants"].append(existing_variant)
+
+                    # Merge images that are tagged for skipped colors
+                    # Images with alt tags matching skipped colors should be preserved
+                    for existing_image in existing_images:
+                        image_alt = existing_image.get("alt", "")
+                        # Check if image is tagged for a skipped color
+                        for skipped_color in colors_to_skip:
+                            if f"Color [{skipped_color}]" in image_alt:
+                                # Check if this image is not already in the product
+                                image_src = existing_image.get("src", "")
+                                if not any(img.get("src") == image_src for img in product["images"]):
+                                    product["images"].append(existing_image)
+                                break
+
+                    log_and_status(
+                        status_fn,
+                        msg=f"  Merged {len([v for v in existing_variants if v.get('option1', '').strip() in colors_to_skip])} existing variants from skipped colors",
+                        ui_msg=f"  Merged variants from {len(colors_to_skip)} skipped colors"
+                    )
 
                 # Update dictionary and save incrementally
                 products_dict[portal_title] = product
@@ -555,7 +683,13 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                         "successful": success_count,
                         "skipped": skip_count,
                         "failed": fail_count,
-                        "with_warnings": len(warnings)
+                        "with_warnings": len(warnings),
+                        "variant_stats": {
+                            "successful_variants": variant_success_count,
+                            "skipped_variants": variant_skip_count,
+                            "failed_variants": variant_fail_count,
+                            "total_variants": variant_success_count + variant_skip_count + variant_fail_count
+                        }
                     },
                     "failures": failures,
                     "warnings": warnings
@@ -579,11 +713,16 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
             status_fn,
             title="PROCESSING COMPLETE",
             stats={
-                "✅ Successful": success_count,
-                "⚠️  With Warnings": len(warnings),
-                "⏭ Skipped": skip_count,
-                "❌ Failed": fail_count,
-                "Total": len(product_families)
+                "✅ Successful Products": success_count,
+                "⚠️  Products with Warnings": len(warnings),
+                "⏭ Skipped Products": skip_count,
+                "❌ Failed Products": fail_count,
+                "Total Products": len(product_families),
+                "": "",  # Separator
+                "✅ Successful Variants": variant_success_count,
+                "⏭ Skipped Variants": variant_skip_count,
+                "❌ Failed Variants": variant_fail_count,
+                "Total Variants": variant_success_count + variant_skip_count + variant_fail_count
             }
         )
 
