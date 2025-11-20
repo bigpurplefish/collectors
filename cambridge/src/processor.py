@@ -608,65 +608,68 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     log=status_fn
                 )
 
-                # Rebuild variants list in original spreadsheet order (skip mode only)
+                # ALWAYS rebuild variants list in original spreadsheet order
+                # This ensures variant order matches the input file regardless of mode
+
+                # Create mapping from (color, unit) to generated variants
+                generated_variants_map = {}
+                for variant in product["variants"]:
+                    color = variant.get("option1", "").strip()
+                    unit = variant.get("option2", "").strip()
+                    if color and unit:
+                        generated_variants_map[(color, unit)] = variant
+
+                # Create mapping from (color, unit) to existing variants (if any)
+                existing_variants_map = {}
+                existing_images = []
                 if variants_to_skip and portal_title in existing_products:
                     existing_product = existing_products[portal_title]
                     existing_images = existing_product.get("images", [])
-
-                    # Create mapping from (color, unit) to generated variants
-                    generated_variants_map = {}
-                    for variant in product["variants"]:
-                        color = variant.get("option1", "").strip()
-                        unit = variant.get("option2", "").strip()
-                        if color and unit:
-                            generated_variants_map[(color, unit)] = variant
-
-                    # Create mapping from (color, unit) to existing variants
                     existing_variants_map = extract_existing_variants_by_color_unit(existing_product)
 
-                    # Rebuild variants list in original spreadsheet order
-                    ordered_variants = []
-                    skipped_colors = set()
+                # Rebuild variants list in original spreadsheet order
+                ordered_variants = []
+                skipped_colors = set()
 
-                    for variant_record in variant_records:
-                        color = variant_record.get("color", "").strip()
-                        if not color:
-                            continue
+                for variant_record in variant_records:
+                    color = variant_record.get("color", "").strip()
+                    if not color:
+                        continue
 
-                        unit = determine_variant_unit(variant_record)
-                        if not unit:
-                            # Record without unit determination - check if it was generated
-                            # Find by color in generated variants
-                            found = False
-                            for gen_variant in product["variants"]:
-                                if gen_variant.get("option1", "").strip() == color:
-                                    if gen_variant not in ordered_variants:
-                                        ordered_variants.append(gen_variant)
-                                        found = True
-                                        break
-                            if not found:
-                                # Try existing variants
-                                for (ex_color, ex_unit), ex_variant in existing_variants_map.items():
-                                    if ex_color == color and ex_variant not in ordered_variants:
-                                        ordered_variants.append(ex_variant)
-                                        skipped_colors.add(color)
-                                        break
-                            continue
+                    unit = determine_variant_unit(variant_record)
+                    if not unit:
+                        # Record without unit determination - check if it was generated
+                        # Find by color in generated variants
+                        found = False
+                        for gen_variant in product["variants"]:
+                            if gen_variant.get("option1", "").strip() == color:
+                                if gen_variant not in ordered_variants:
+                                    ordered_variants.append(gen_variant)
+                                    found = True
+                                    break
+                        if not found:
+                            # Try existing variants
+                            for (ex_color, ex_unit), ex_variant in existing_variants_map.items():
+                                if ex_color == color and ex_variant not in ordered_variants:
+                                    ordered_variants.append(ex_variant)
+                                    skipped_colors.add(color)
+                                    break
+                        continue
 
-                        variant_key = (color, unit)
+                    variant_key = (color, unit)
 
-                        # Use existing variant if this was skipped, otherwise use generated
-                        if variant_key in variants_to_skip and variant_key in existing_variants_map:
-                            ordered_variants.append(existing_variants_map[variant_key])
-                            skipped_colors.add(color)
-                        elif variant_key in generated_variants_map:
-                            ordered_variants.append(generated_variants_map[variant_key])
+                    # Use existing variant if this was skipped, otherwise use generated
+                    if variant_key in variants_to_skip and variant_key in existing_variants_map:
+                        ordered_variants.append(existing_variants_map[variant_key])
+                        skipped_colors.add(color)
+                    elif variant_key in generated_variants_map:
+                        ordered_variants.append(generated_variants_map[variant_key])
 
-                    # Replace product variants with ordered list
-                    product["variants"] = ordered_variants
+                # Replace product variants with ordered list
+                product["variants"] = ordered_variants
 
-                    # Merge images that are tagged for skipped colors
-                    # Images with alt tags matching skipped colors should be preserved
+                # Merge images that are tagged for skipped colors (skip mode only)
+                if variants_to_skip and existing_images:
                     for existing_image in existing_images:
                         image_alt = existing_image.get("alt", "")
                         # Check if image is tagged for a skipped color
