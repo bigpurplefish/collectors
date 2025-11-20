@@ -897,6 +897,10 @@ For issues or questions:
   - Works in both skip and overwrite modes, as well as first runs
   - Previously only worked when merging skipped variants
   - Ensures intentional ordering from spreadsheet is maintained regardless of processing mode
+- **Improved:** Portal data collection now preserves spreadsheet order
+  - Colors collected in same order as they appear in input file
+  - Makes logs clearer and easier to follow
+  - Previously used set() which randomized collection order
 - **Added:** Title normalization for copyright symbols
   - Automatically converts `©` to `(C)` in Excel input data at load time
   - Normalizes portal index titles when loaded from cache

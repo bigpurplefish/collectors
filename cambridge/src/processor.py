@@ -525,8 +525,15 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 portal_data_by_color = {}
                 portal_warnings = []  # Track portal data issues
 
-                # Get unique colors from variants_to_process (may have multiple records per color)
-                colors_to_collect = {v.get("color", "").strip() for v in variants_to_process if v.get("color", "").strip()}
+                # Get unique colors from variants_to_process in original order
+                # Use list to preserve spreadsheet order instead of set
+                colors_to_collect = []
+                seen_colors = set()
+                for v in variants_to_process:
+                    color = v.get("color", "").strip()
+                    if color and color not in seen_colors:
+                        colors_to_collect.append(color)
+                        seen_colors.add(color)
 
                 for color in colors_to_collect:
                     log_and_status(
