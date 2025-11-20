@@ -512,18 +512,28 @@ The SKU registry is stored at `/collectors/cache/sku_registry.json` (parent-leve
 
 ### Skip Mode (Default) - Variant-Level
 
-**As of v1.8.0**, skip mode operates at the **variant level** (not product level):
+**As of v1.8.0**, skip mode operates at the **variant level** by **color+unit combination**:
 
 - **Skips individual variants** that already have portal data (SKU, price, cost)
-- **Allows adding new colors** to existing products without re-processing existing variants
+- **Each variant = color + unit** (e.g., "Red/Piece" and "Red/Sq Ft" are separate variants)
+- **Allows adding new colors OR new units** to existing products
 - **Resume interrupted processing** - picks up where you left off
 - **Safe for incremental updates** - preserves work if interrupted
 
-**Example Use Case:**
+**Example Use Cases:**
+
+*Adding a new color:*
 ```
-Existing output has: Product X with Red and Blue variants
-Input file now has: Product X with Red, Blue, and Green variants
-Result: Skips Red and Blue (existing), processes Green (new)
+Existing output: Product X with Red/Piece and Blue/Piece
+Input file now:  Product X with Red/Piece, Blue/Piece, and Green/Piece
+Result: Skips Red/Piece and Blue/Piece (existing), processes Green/Piece (new)
+```
+
+*Adding a new unit for existing color:*
+```
+Existing output: Product X with Red/Piece
+Input file now:  Product X with Red/Piece and Red/Sq Ft
+Result: Skips Red/Piece (existing), processes Red/Sq Ft (new unit)
 ```
 
 **Variant-Level Statistics:**
@@ -874,12 +884,14 @@ For issues or questions:
 ## Version History
 
 ### v1.8.0 (2025-11-20)
-- **Changed:** Skip mode now operates at **variant level** (not product level)
-  - Skips individual variants that already have portal data (SKU, price, cost)
-  - Allows adding new colors to existing products without re-processing existing variants
-  - Portal data collection now checks each color individually
-  - Merges newly processed variants with existing variants from skipped colors
-  - Preserves images for skipped variants
+- **Changed:** Skip mode now operates at **variant level by color+unit combination**
+  - Each input record (variant) is checked individually by its color AND unit
+  - Skips only if that specific color+unit combination exists with portal data (SKU, price, cost)
+  - Allows adding new colors OR new units to existing products
+  - Unit determined from pricing data: "Piece" (if has piece pricing) or "Sq Ft" (if has sq ft pricing)
+  - Portal data collected only for colors that need processing
+  - Merges newly processed variants with existing variants from skipped color+unit combinations
+  - Preserves images for skipped color+unit combinations
 - **Changed:** GUI label renamed from "Skip Processed Products" to "Skip Processed Variants"
 - **Added:** Variant-level statistics in processing summary
   - Successful variants (newly processed)
@@ -887,7 +899,13 @@ For issues or questions:
   - Failed variants (missing portal data)
 - **Added:** Variant-level failure reporting in logs
   - Each color failure now logged individually: "❌ Variant failed: No portal data found for color 'X'"
-- **Added:** New test suite: `tests/test_variant_skip.py` for variant-level skip logic
+- **Added:** Helper functions in `src/processor.py`:
+  - `extract_existing_variants_by_color_unit()` - Extracts variants keyed by (color, unit) tuple
+  - `determine_variant_unit()` - Determines unit from input record pricing data
+- **Added:** Updated test suite: `tests/test_variant_skip.py` with color+unit combination tests
+  - Tests for extracting variants by color+unit
+  - Tests for determining unit from pricing data
+  - Tests for variant skip logic by color+unit
 
 ### v1.7.3 (2025-11-20)
 - **Added:** Incremental saving for both skip and overwrite modes

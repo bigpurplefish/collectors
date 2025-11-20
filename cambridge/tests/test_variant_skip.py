@@ -13,14 +13,14 @@ import sys
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from src.processor import extract_existing_variants_by_color, variant_has_portal_data
+from src.processor import extract_existing_variants_by_color_unit, variant_has_portal_data, determine_variant_unit
 
 
-def test_extract_variants_by_color():
-    """Test extracting variants grouped by color."""
+def test_extract_variants_by_color_unit():
+    """Test extracting variants keyed by (color, unit) combination."""
     print("")
     print("=" * 80)
-    print("TEST: Extract Variants by Color")
+    print("TEST: Extract Variants by Color+Unit Combination")
     print("=" * 80)
     print("")
 
@@ -35,26 +35,33 @@ def test_extract_variants_by_color():
         ]
     }
 
-    # Extract variants by color
-    variants_by_color = extract_existing_variants_by_color(product)
+    # Extract variants by (color, unit) combination
+    variants_by_color_unit = extract_existing_variants_by_color_unit(product)
 
     # Verify results
-    assert len(variants_by_color) == 3, f"Expected 3 colors, got {len(variants_by_color)}"
-    assert "Red" in variants_by_color, "Red should be in variants_by_color"
-    assert "Blue" in variants_by_color, "Blue should be in variants_by_color"
-    assert "Green" in variants_by_color, "Green should be in variants_by_color"
+    assert len(variants_by_color_unit) == 4, f"Expected 4 variants, got {len(variants_by_color_unit)}"
+    assert ("Red", "Piece") in variants_by_color_unit, "Red/Piece should be in variants"
+    assert ("Red", "Sq Ft") in variants_by_color_unit, "Red/Sq Ft should be in variants"
+    assert ("Blue", "Piece") in variants_by_color_unit, "Blue/Piece should be in variants"
+    assert ("Green", "Piece") in variants_by_color_unit, "Green/Piece should be in variants"
 
-    assert len(variants_by_color["Red"]) == 2, f"Expected 2 Red variants, got {len(variants_by_color['Red'])}"
-    assert len(variants_by_color["Blue"]) == 1, f"Expected 1 Blue variant, got {len(variants_by_color['Blue'])}"
-    assert len(variants_by_color["Green"]) == 1, f"Expected 1 Green variant, got {len(variants_by_color['Green'])}"
+    # Verify data for Red/Piece
+    red_piece = variants_by_color_unit[("Red", "Piece")]
+    assert red_piece["sku"] == "TEST-RED-P", "Red/Piece should have correct SKU"
+    assert red_piece["price"] == "10.00", "Red/Piece should have correct price"
+
+    # Verify data for Red/Sq Ft
+    red_sqft = variants_by_color_unit[("Red", "Sq Ft")]
+    assert red_sqft["sku"] == "TEST-RED-SF", "Red/Sq Ft should have correct SKU"
+    assert red_sqft["price"] == "20.00", "Red/Sq Ft should have correct price"
 
     print("✓ Extracted variants correctly:")
-    for color, variants in variants_by_color.items():
-        print(f"  {color}: {len(variants)} variant(s)")
+    for (color, unit), variant in variants_by_color_unit.items():
+        print(f"  {color}/{unit}: SKU={variant['sku']}, Price={variant['price']}")
 
     print("")
     print("=" * 80)
-    print("✓ TEST PASSED: Variants extracted correctly by color")
+    print("✓ TEST PASSED: Variants extracted correctly by color+unit combination")
     print("=" * 80)
     print("")
 
@@ -62,7 +69,7 @@ def test_extract_variants_by_color():
 
 
 def test_variant_has_portal_data():
-    """Test checking if variants have portal data."""
+    """Test checking if a variant has portal data."""
     print("")
     print("=" * 80)
     print("TEST: Check Variant Has Portal Data")
@@ -70,44 +77,29 @@ def test_variant_has_portal_data():
     print("")
 
     # Test 1: Variant with complete portal data
-    complete_variants = [
-        {"option1": "Red", "sku": "TEST-RED", "price": "10.00", "cost": "5.00"}
-    ]
-    assert variant_has_portal_data(complete_variants) == True, "Should return True for complete data"
+    complete_variant = {"option1": "Red", "sku": "TEST-RED", "price": "10.00", "cost": "5.00"}
+    assert variant_has_portal_data(complete_variant) == True, "Should return True for complete data"
     print("✓ Test 1: Complete portal data detected")
 
     # Test 2: Variant missing SKU
-    missing_sku = [
-        {"option1": "Blue", "price": "10.00", "cost": "5.00"}
-    ]
+    missing_sku = {"option1": "Blue", "price": "10.00", "cost": "5.00"}
     assert variant_has_portal_data(missing_sku) == False, "Should return False when SKU missing"
     print("✓ Test 2: Missing SKU detected")
 
     # Test 3: Variant missing price
-    missing_price = [
-        {"option1": "Green", "sku": "TEST-GREEN", "cost": "5.00"}
-    ]
+    missing_price = {"option1": "Green", "sku": "TEST-GREEN", "cost": "5.00"}
     assert variant_has_portal_data(missing_price) == False, "Should return False when price missing"
     print("✓ Test 3: Missing price detected")
 
     # Test 4: Variant missing cost
-    missing_cost = [
-        {"option1": "Yellow", "sku": "TEST-YELLOW", "price": "10.00"}
-    ]
+    missing_cost = {"option1": "Yellow", "sku": "TEST-YELLOW", "price": "10.00"}
     assert variant_has_portal_data(missing_cost) == False, "Should return False when cost missing"
     print("✓ Test 4: Missing cost detected")
 
-    # Test 5: Multiple variants, one complete
-    mixed_variants = [
-        {"option1": "Red", "price": "10.00"},  # Missing SKU and cost
-        {"option1": "Red", "sku": "TEST-RED", "price": "10.00", "cost": "5.00"}  # Complete
-    ]
-    assert variant_has_portal_data(mixed_variants) == True, "Should return True if at least one variant is complete"
-    print("✓ Test 5: Mixed variants - at least one complete")
-
-    # Test 6: Empty list
-    assert variant_has_portal_data([]) == False, "Should return False for empty list"
-    print("✓ Test 6: Empty list handled correctly")
+    # Test 5: Empty variant
+    empty_variant = {}
+    assert variant_has_portal_data(empty_variant) == False, "Should return False for empty variant"
+    print("✓ Test 5: Empty variant handled correctly")
 
     print("")
     print("=" * 80)
@@ -118,15 +110,80 @@ def test_variant_has_portal_data():
     return True
 
 
-def test_variant_skip_logic():
-    """Test the variant-level skip logic simulation."""
+def test_determine_variant_unit():
+    """Test determining unit from input record pricing data."""
     print("")
     print("=" * 80)
-    print("TEST: Variant-Level Skip Logic Simulation")
+    print("TEST: Determine Variant Unit from Pricing Data")
     print("=" * 80)
     print("")
 
-    # Simulate existing product with 2 colors (Red and Blue)
+    # Test 1: Record with piece pricing
+    piece_record = {
+        "color": "Red",
+        "cost_per_piece": 2.99,
+        "price_per_piece": 3.99
+    }
+    assert determine_variant_unit(piece_record) == "Piece", "Should return Piece for piece pricing"
+    print("✓ Test 1: Piece pricing detected")
+
+    # Test 2: Record with sq ft pricing
+    sqft_record = {
+        "color": "Blue",
+        "sq_ft_cost": 5.99,
+        "sq_ft_price": 7.99
+    }
+    assert determine_variant_unit(sqft_record) == "Sq Ft", "Should return Sq Ft for sq ft pricing"
+    print("✓ Test 2: Sq Ft pricing detected")
+
+    # Test 3: Record with both (piece takes priority)
+    both_record = {
+        "color": "Green",
+        "cost_per_piece": 2.99,
+        "price_per_piece": 3.99,
+        "sq_ft_cost": 5.99,
+        "sq_ft_price": 7.99
+    }
+    assert determine_variant_unit(both_record) == "Piece", "Should return Piece when both exist (priority)"
+    print("✓ Test 3: Piece priority with both pricing types")
+
+    # Test 4: Record with no pricing
+    no_pricing_record = {
+        "color": "Yellow"
+    }
+    assert determine_variant_unit(no_pricing_record) is None, "Should return None for no pricing"
+    print("✓ Test 4: No pricing returns None")
+
+    # Test 5: Record with NaN values
+    import math
+    nan_record = {
+        "color": "Orange",
+        "cost_per_piece": math.nan,
+        "price_per_piece": 3.99,
+        "sq_ft_cost": 5.99,
+        "sq_ft_price": 7.99
+    }
+    assert determine_variant_unit(nan_record) == "Sq Ft", "Should fallback to Sq Ft when piece has NaN"
+    print("✓ Test 5: NaN handling - fallback to Sq Ft")
+
+    print("")
+    print("=" * 80)
+    print("✓ TEST PASSED: Unit determination working correctly")
+    print("=" * 80)
+    print("")
+
+    return True
+
+
+def test_variant_skip_logic():
+    """Test the variant-level skip logic simulation by color+unit."""
+    print("")
+    print("=" * 80)
+    print("TEST: Variant-Level Skip Logic by Color+Unit")
+    print("=" * 80)
+    print("")
+
+    # Simulate existing product with 2 variants: Red/Piece and Blue/Piece
     existing_product = {
         "title": "Test Product",
         "variants": [
@@ -135,38 +192,69 @@ def test_variant_skip_logic():
         ]
     }
 
-    # Simulate input records that include Red (existing), Blue (existing), and Green (new)
-    input_colors = {"Red", "Blue", "Green"}
+    # Simulate input records:
+    # - Red/Piece (exists, should skip)
+    # - Red/Sq Ft (new unit for Red, should process)
+    # - Blue/Piece (exists, should skip)
+    # - Green/Piece (new color, should process)
+    input_records = [
+        {"color": "Red", "cost_per_piece": 2.99, "price_per_piece": 3.99},  # Red/Piece
+        {"color": "Red", "sq_ft_cost": 5.99, "sq_ft_price": 7.99},          # Red/Sq Ft
+        {"color": "Blue", "cost_per_piece": 7.50, "price_per_piece": 8.50}, # Blue/Piece
+        {"color": "Green", "cost_per_piece": 6.00, "price_per_piece": 7.00}, # Green/Piece
+    ]
 
-    # Extract existing variants
-    variants_by_color = extract_existing_variants_by_color(existing_product)
+    # Extract existing variants by (color, unit)
+    existing_variants_by_color_unit = extract_existing_variants_by_color_unit(existing_product)
 
-    # Determine which colors to skip vs process
-    colors_to_skip = set()
-    colors_to_process = set()
+    # Determine which variants to skip vs process
+    variants_to_skip = set()
+    variants_to_process = []
 
-    for color in input_colors:
-        if color in variants_by_color:
-            # Check if this color has portal data
-            if variant_has_portal_data(variants_by_color[color]):
-                colors_to_skip.add(color)
+    for record in input_records:
+        color = record.get("color", "").strip()
+        if not color:
+            continue
+
+        # Determine unit for this record
+        unit = determine_variant_unit(record)
+        if not unit:
+            variants_to_process.append(record)
+            continue
+
+        variant_key = (color, unit)
+
+        # Check if this specific color+unit exists with portal data
+        if variant_key in existing_variants_by_color_unit:
+            existing_variant = existing_variants_by_color_unit[variant_key]
+            if variant_has_portal_data(existing_variant):
+                variants_to_skip.add(variant_key)
             else:
-                colors_to_process.add(color)
+                variants_to_process.append(record)
         else:
-            # New color, needs processing
-            colors_to_process.add(color)
+            variants_to_process.append(record)
 
     # Verify results
-    assert colors_to_skip == {"Red", "Blue"}, f"Expected to skip Red and Blue, got {colors_to_skip}"
-    assert colors_to_process == {"Green"}, f"Expected to process Green, got {colors_to_process}"
+    expected_skip = {("Red", "Piece"), ("Blue", "Piece")}
+    assert variants_to_skip == expected_skip, f"Expected to skip {expected_skip}, got {variants_to_skip}"
+    assert len(variants_to_process) == 2, f"Expected 2 variants to process, got {len(variants_to_process)}"
 
-    print("✓ Input colors: Red, Blue, Green")
-    print(f"✓ Colors to skip (have portal data): {', '.join(sorted(colors_to_skip))}")
-    print(f"✓ Colors to process (new/missing data): {', '.join(sorted(colors_to_process))}")
+    # Check that Red/Sq Ft and Green/Piece are in variants_to_process
+    process_colors_units = [(v["color"], determine_variant_unit(v)) for v in variants_to_process]
+    assert ("Red", "Sq Ft") in process_colors_units, "Should process Red/Sq Ft (new unit)"
+    assert ("Green", "Piece") in process_colors_units, "Should process Green/Piece (new color)"
+
+    print("✓ Input variants: Red/Piece, Red/Sq Ft, Blue/Piece, Green/Piece")
+    print(f"✓ Variants to skip (have portal data):")
+    for color, unit in sorted(variants_to_skip):
+        print(f"    - {color}/{unit}")
+    print(f"✓ Variants to process (new/missing data):")
+    for color, unit in process_colors_units:
+        print(f"    - {color}/{unit}")
 
     print("")
     print("=" * 80)
-    print("✓ TEST PASSED: Variant skip logic working correctly")
+    print("✓ TEST PASSED: Variant skip logic working correctly by color+unit")
     print("=" * 80)
     print("")
 
@@ -179,17 +267,19 @@ if __name__ == "__main__":
         print("Running Variant-Level Skip Mode Tests")
         print("")
 
-        test_extract_variants_by_color()
+        test_extract_variants_by_color_unit()
         test_variant_has_portal_data()
+        test_determine_variant_unit()
         test_variant_skip_logic()
 
         print("")
         print("=" * 80)
         print("TEST SUMMARY")
         print("=" * 80)
-        print("Extract Variants by Color: ✓ PASSED")
+        print("Extract Variants by Color+Unit: ✓ PASSED")
         print("Check Variant Has Portal Data: ✓ PASSED")
-        print("Variant Skip Logic Simulation: ✓ PASSED")
+        print("Determine Variant Unit: ✓ PASSED")
+        print("Variant Skip Logic by Color+Unit: ✓ PASSED")
         print("=" * 80)
         print("")
 

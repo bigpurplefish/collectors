@@ -139,43 +139,79 @@ def save_output_file(products: List[Dict[str, Any]], output_file: str, status_fn
         raise
 
 
-def extract_existing_variants_by_color(product: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+def extract_existing_variants_by_color_unit(product: Dict[str, Any]) -> Dict[tuple, Dict[str, Any]]:
     """
-    Extract existing variants from a product, grouped by color.
+    Extract existing variants from a product, keyed by (color, unit) combination.
 
     Args:
         product: Product dictionary from output file
 
     Returns:
-        Dictionary mapping color (option1) to list of variants with that color
+        Dictionary mapping (color, unit) tuple to variant data
     """
-    variants_by_color = {}
+    variants_by_color_unit = {}
     for variant in product.get("variants", []):
         color = variant.get("option1", "").strip()
-        if color:
-            if color not in variants_by_color:
-                variants_by_color[color] = []
-            variants_by_color[color].append(variant)
-    return variants_by_color
+        unit = variant.get("option2", "").strip()
+        if color and unit:
+            key = (color, unit)
+            variants_by_color_unit[key] = variant
+    return variants_by_color_unit
 
 
-def variant_has_portal_data(variants: List[Dict[str, Any]]) -> bool:
+def variant_has_portal_data(variant: Dict[str, Any]) -> bool:
     """
-    Check if any variant in the list has portal data (SKU, price, cost).
+    Check if a variant has complete portal data (SKU, price, cost).
 
     Args:
-        variants: List of variants for a specific color
+        variant: Single variant dictionary
 
     Returns:
-        True if at least one variant has SKU, price, and cost
+        True if variant has SKU, price, and cost
     """
-    for variant in variants:
-        has_sku = bool(variant.get("sku"))
-        has_price = bool(variant.get("price"))
-        has_cost = bool(variant.get("cost"))
-        if has_sku and has_price and has_cost:
-            return True
-    return False
+    has_sku = bool(variant.get("sku"))
+    has_price = bool(variant.get("price"))
+    has_cost = bool(variant.get("cost"))
+    return has_sku and has_price and has_cost
+
+
+def determine_variant_unit(variant_record: Dict[str, Any]) -> Optional[str]:
+    """
+    Determine the unit of sale for a variant record based on pricing data.
+
+    This matches the logic in product_generator.py:
+    - Priority: "Piece" if has cost_per_piece and price_per_piece
+    - Fallback: "Sq Ft" if has sq_ft_cost and sq_ft_price
+
+    Args:
+        variant_record: Input record from Excel file
+
+    Returns:
+        "Piece", "Sq Ft", or None if no pricing data
+    """
+    import math
+
+    # Check for piece pricing
+    cost_per_piece = variant_record.get("cost_per_piece")
+    price_per_piece = variant_record.get("price_per_piece")
+
+    has_piece_cost = cost_per_piece is not None and not (isinstance(cost_per_piece, float) and math.isnan(cost_per_piece))
+    has_piece_price = price_per_piece is not None and not (isinstance(price_per_piece, float) and math.isnan(price_per_piece))
+
+    if has_piece_cost and has_piece_price:
+        return "Piece"
+
+    # Check for sq ft pricing
+    sq_ft_cost = variant_record.get("sq_ft_cost")
+    sq_ft_price = variant_record.get("sq_ft_price")
+
+    has_sqft_cost = sq_ft_cost is not None and not (isinstance(sq_ft_cost, float) and math.isnan(sq_ft_cost))
+    has_sqft_price = sq_ft_price is not None and not (isinstance(sq_ft_price, float) and math.isnan(sq_ft_price))
+
+    if has_sqft_cost and has_sqft_price:
+        return "Sq Ft"
+
+    return None
 
 
 def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = None):
@@ -337,57 +373,71 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
             )
 
             # Variant-level skip logic (skip mode only)
-            existing_variants_by_color = {}
-            colors_to_skip = set()
-            colors_to_process = set()
+            # Check each input record (variant) by color+unit combination
+            existing_variants_by_color_unit = {}
+            variants_to_skip = set()  # Set of (color, unit) tuples
+            variants_to_process = []  # List of variant_records to process
 
             if processing_mode == "skip" and portal_title in products_dict:
-                # Extract existing variants grouped by color
+                # Extract existing variants keyed by (color, unit)
                 existing_product = products_dict[portal_title]
-                existing_variants_by_color = extract_existing_variants_by_color(existing_product)
+                existing_variants_by_color_unit = extract_existing_variants_by_color_unit(existing_product)
 
-                # Check each input color to see if we should skip it
+                # Check each input record individually
                 for variant_record in variant_records:
                     color = variant_record.get("color", "").strip()
                     if not color:
                         continue
 
-                    # Check if this color already has portal data
-                    if color in existing_variants_by_color:
-                        existing_variants = existing_variants_by_color[color]
-                        if variant_has_portal_data(existing_variants):
-                            colors_to_skip.add(color)
-                        else:
-                            colors_to_process.add(color)
-                    else:
-                        colors_to_process.add(color)
+                    # Determine the unit for this record
+                    unit = determine_variant_unit(variant_record)
+                    if not unit:
+                        # No pricing data, can't determine unit - process anyway
+                        variants_to_process.append(variant_record)
+                        continue
 
-                # If all colors should be skipped, skip entire product
-                if colors_to_process == set() and colors_to_skip:
+                    variant_key = (color, unit)
+
+                    # Check if this specific color+unit combination already exists with portal data
+                    if variant_key in existing_variants_by_color_unit:
+                        existing_variant = existing_variants_by_color_unit[variant_key]
+                        if variant_has_portal_data(existing_variant):
+                            variants_to_skip.add(variant_key)
+                            variant_skip_count += 1
+                        else:
+                            variants_to_process.append(variant_record)
+                    else:
+                        variants_to_process.append(variant_record)
+
+                # If all variants should be skipped, skip entire product
+                if not variants_to_process and variants_to_skip:
                     log_and_status(
                         status_fn,
-                        msg=f"[{i}/{len(product_families)}] Skipping: {portal_title} - all {len(colors_to_skip)} variants have portal data",
+                        msg=f"[{i}/{len(product_families)}] Skipping: {portal_title} - all {len(variants_to_skip)} variants have portal data",
                         ui_msg="  ⏭ Skipping (all variants processed)"
                     )
                     skip_count += 1
                     continue
 
-                # Log which colors we're skipping vs processing
-                if colors_to_skip:
+                # Log which variants we're skipping vs processing
+                if variants_to_skip:
+                    skip_labels = [f"{c}/{u}" for c, u in sorted(list(variants_to_skip)[:3])]
+                    if len(variants_to_skip) > 3:
+                        skip_labels.append(f"+{len(variants_to_skip) - 3} more")
                     log_and_status(
                         status_fn,
-                        msg=f"  Skipping {len(colors_to_skip)} variants with existing portal data: {', '.join(sorted(list(colors_to_skip))[:3])}{'...' if len(colors_to_skip) > 3 else ''}",
-                        ui_msg=f"  Skipping {len(colors_to_skip)} variants"
+                        msg=f"  Skipping {len(variants_to_skip)} variants with existing portal data: {', '.join(skip_labels)}",
+                        ui_msg=f"  Skipping {len(variants_to_skip)} variants"
                     )
-                if colors_to_process:
+                if variants_to_process:
                     log_and_status(
                         status_fn,
-                        msg=f"  Processing {len(colors_to_process)} variants: {', '.join(sorted(list(colors_to_process))[:3])}{'...' if len(colors_to_process) > 3 else ''}",
-                        ui_msg=f"  Processing {len(colors_to_process)} new/missing variants"
+                        msg=f"  Processing {len(variants_to_process)} variants",
+                        ui_msg=f"  Processing {len(variants_to_process)} new/missing variants"
                     )
             else:
-                # Not skip mode or product doesn't exist - process all colors
-                colors_to_process = {v.get("color", "").strip() for v in variant_records if v.get("color", "").strip()}
+                # Not skip mode or product doesn't exist - process all records
+                variants_to_process = [v for v in variant_records if v.get("color", "").strip()]
 
             try:
                 # Get public_title from first variant (used for public site search)
@@ -467,25 +517,14 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                             details=f"Public Title: {public_title}, Missing: {', '.join(missing_important)}"
                         )
 
-                # Collect portal data for each color variant
+                # Collect portal data for each variant to process
                 portal_data_by_color = {}
                 portal_warnings = []  # Track portal data issues
 
-                for variant_record in variant_records:
-                    color = variant_record.get("color", "").strip()
-                    if not color:
-                        continue
+                # Get unique colors from variants_to_process (may have multiple records per color)
+                colors_to_collect = {v.get("color", "").strip() for v in variants_to_process if v.get("color", "").strip()}
 
-                    # Skip if this color already has portal data (variant-level skip)
-                    if color in colors_to_skip:
-                        log_and_status(
-                            status_fn,
-                            msg=f"  ⏭ Skipping variant '{color}' (already has portal data)",
-                            ui_msg=f"  ⏭ Skipping variant: {color}"
-                        )
-                        variant_skip_count += 1
-                        continue
-
+                for color in colors_to_collect:
                     log_and_status(
                         status_fn,
                         msg=f"  Collecting portal data for color: {color} (product: {portal_title})",
@@ -536,14 +575,14 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     log_error(
                         status_fn,
                         msg="Product not found in public index or portal",
-                        details=f"Portal Title: {portal_title}, searched {len(variant_records)} colors in portal"
+                        details=f"Portal Title: {portal_title}, searched {len(variants_to_process)} variants in portal"
                     )
                     failures.append({
                         "title": portal_title,
                         "reason": "Product not found in public index or portal",
-                        "colors": [v.get("color", "") for v in variant_records],
+                        "colors": [v.get("color", "") for v in variants_to_process],
                         "search_color": first_color,
-                        "variant_count": len(variant_records)
+                        "variant_count": len(variants_to_process)
                     })
                     fail_count += 1
                     continue
@@ -556,34 +595,39 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                         details=f"Portal Title: {portal_title}, missing public description, hero image, and gallery"
                     )
 
-                # Generate Shopify product
+                # Generate Shopify product (only for variants_to_process)
                 product = generator.generate_product(
                     title=portal_title,
-                    variant_records=variant_records,
+                    variant_records=variants_to_process,
                     public_data=public_data,
                     portal_data_by_color=portal_data_by_color,
                     log=status_fn
                 )
 
-                # Merge variants from skipped colors (skip mode only)
-                if colors_to_skip and portal_title in existing_products:
+                # Merge variants from skipped color+unit combinations (skip mode only)
+                if variants_to_skip and portal_title in existing_products:
                     existing_product = existing_products[portal_title]
                     existing_variants = existing_product.get("variants", [])
                     existing_images = existing_product.get("images", [])
 
-                    # Add variants from skipped colors to the newly generated product
+                    # Add variants from skipped color+unit combinations to the newly generated product
+                    skipped_colors = set()
                     for existing_variant in existing_variants:
                         variant_color = existing_variant.get("option1", "").strip()
-                        if variant_color in colors_to_skip:
+                        variant_unit = existing_variant.get("option2", "").strip()
+                        variant_key = (variant_color, variant_unit)
+
+                        if variant_key in variants_to_skip:
                             # Add this variant to the product
                             product["variants"].append(existing_variant)
+                            skipped_colors.add(variant_color)
 
                     # Merge images that are tagged for skipped colors
                     # Images with alt tags matching skipped colors should be preserved
                     for existing_image in existing_images:
                         image_alt = existing_image.get("alt", "")
                         # Check if image is tagged for a skipped color
-                        for skipped_color in colors_to_skip:
+                        for skipped_color in skipped_colors:
                             if f"Color [{skipped_color}]" in image_alt:
                                 # Check if this image is not already in the product
                                 image_src = existing_image.get("src", "")
@@ -593,8 +637,8 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
 
                     log_and_status(
                         status_fn,
-                        msg=f"  Merged {len([v for v in existing_variants if v.get('option1', '').strip() in colors_to_skip])} existing variants from skipped colors",
-                        ui_msg=f"  Merged variants from {len(colors_to_skip)} skipped colors"
+                        msg=f"  Merged {len(variants_to_skip)} existing variants from skipped color+unit combinations",
+                        ui_msg=f"  Merged {len(variants_to_skip)} skipped variants"
                     )
 
                 # Update dictionary and save incrementally
@@ -614,10 +658,15 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
 
                 # Track warnings
                 if portal_warnings or using_portal_fallback:
+                    # Include all colors (both processed and skipped)
+                    all_colors = set()
+                    all_colors.update([v.get("color", "") for v in variants_to_process])
+                    all_colors.update([color for color, unit in variants_to_skip])
+
                     warning_entry = {
                         "title": portal_title,
-                        "colors": [v.get("color", "") for v in variant_records],
-                        "variant_count": len(variant_records),
+                        "colors": sorted(list(all_colors)),
+                        "variant_count": len(variants_to_process) + len(variants_to_skip),
                         "product_url": product_url if product_url else "N/A (portal only)",
                         "public_data_summary": public_summary
                     }
