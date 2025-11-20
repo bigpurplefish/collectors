@@ -66,6 +66,14 @@ def load_input_file(input_file: str, status_fn: Optional[Callable] = None) -> Li
         # Convert to list of dictionaries
         records = df.to_dict(orient="records")
 
+        # Normalize escaped characters in string fields
+        # Excel data may contain literal escaped quotes (e.g., \"  ) that should be actual quotes (")
+        for record in records:
+            for key, value in record.items():
+                if isinstance(value, str):
+                    # Normalize escaped quotes to actual quotes
+                    record[key] = value.replace('\\"', '"')
+
         log_success(
             status_fn,
             msg=f"Loaded {len(records)} records from input file",

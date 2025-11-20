@@ -669,11 +669,20 @@ def build_gui():
                 log_file = log_var.get().strip()
                 if log_file:
                     os.makedirs(os.path.dirname(log_file), exist_ok=True)
+                    file_handler = logging.FileHandler(log_file)
+                    file_handler.setLevel(logging.INFO)
+
                     logging.basicConfig(
-                        filename=log_file,
                         level=logging.INFO,
-                        format="%(asctime)s [%(levelname)s] %(message)s"
+                        format="%(asctime)s [%(levelname)s] %(message)s",
+                        handlers=[file_handler],
+                        force=True  # Force reconfiguration
                     )
+
+                    # Force unbuffered output for file handler
+                    for handler in logging.root.handlers:
+                        if isinstance(handler, logging.FileHandler):
+                            handler.stream.reconfigure(line_buffering=True)
 
                 # Run processing
                 process_products(cfg, status)

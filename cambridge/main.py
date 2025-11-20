@@ -36,13 +36,23 @@ def setup_logging(log_file: str):
     ]
 
     if log_file:
-        handlers.append(logging.FileHandler(log_file))  # File output
+        file_handler = logging.FileHandler(log_file)
+        # Force immediate flush after each log message
+        file_handler.setLevel(logging.INFO)
+        handlers.append(file_handler)
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=handlers
+        handlers=handlers,
+        force=True  # Force reconfiguration if already configured
     )
+
+    # Force unbuffered output for file handler
+    if log_file:
+        for handler in logging.root.handlers:
+            if isinstance(handler, logging.FileHandler):
+                handler.stream.reconfigure(line_buffering=True)
 
 
 def main():

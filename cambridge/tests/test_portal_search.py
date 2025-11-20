@@ -79,11 +79,13 @@ def test_portal_search():
     print(f"✓ Found: {result['url']}")
     print("")
 
-    # Test 3: Escaped quotes normalization (v1.7.1+)
-    print("Test 3: Escaped quotes normalization")
-    print("Searching for: title='KingsCourt 4\\\" x 8\\\" Holland', color='Onyx'")
-    result = searcher.find_product_by_title_and_color('KingsCourt 4\\" x 8\\" Holland', "Onyx", print)
-    assert result is not None, "Should find match after normalizing escaped quotes"
+    # Test 3: Actual quote characters (v1.7.2+)
+    # Note: Normalization now happens at data loading stage (processor.py)
+    # Search receives already-normalized data with actual quote characters
+    print("Test 3: Actual quote characters (after normalization at load time)")
+    print("Searching for: title='KingsCourt 4\" x 8\" Holland', color='Onyx'")
+    result = searcher.find_product_by_title_and_color('KingsCourt 4" x 8" Holland', "Onyx", print)
+    assert result is not None, "Should find match with actual quote characters"
     assert result["url"] == "/pavers/kingscourt/kingscourt-4x8-holland-onyx"
     print(f"✓ Found: {result['url']}")
     print("")
