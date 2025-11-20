@@ -299,6 +299,13 @@ def load_index_from_cache(cache_file: str, log: Callable = print) -> Dict[str, A
         with open(cache_file, "r", encoding="utf-8") as f:
             index = json.load(f)
 
+        # Normalize product titles in the index
+        # Convert copyright symbol (©) to (C) for consistent matching
+        if "products" in index:
+            for product in index["products"]:
+                if "title" in product and isinstance(product["title"], str):
+                    product["title"] = product["title"].replace('©', '(C)')
+
         log_success(
             log,
             f"Loaded index from cache: {cache_file}",

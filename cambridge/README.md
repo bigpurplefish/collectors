@@ -892,6 +892,14 @@ For issues or questions:
   - Portal data collected only for colors that need processing
   - Merges newly processed variants with existing variants from skipped color+unit combinations
   - Preserves images for skipped color+unit combinations
+- **Fixed:** Variant order now preserved from spreadsheet in output file
+  - Rebuilds variants list in original spreadsheet order when merging skipped variants
+  - Ensures intentional ordering from spreadsheet is maintained
+- **Added:** Title normalization for copyright symbols
+  - Automatically converts `©` to `(C)` in Excel input data at load time
+  - Normalizes portal index titles when loaded from cache
+  - Ensures consistent matching between Excel input and portal index
+  - Normalized titles appear in output file
 - **Changed:** GUI label renamed from "Skip Processed Products" to "Skip Processed Variants"
 - **Added:** Variant-level statistics in processing summary
   - Successful variants (newly processed)

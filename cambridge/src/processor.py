@@ -66,13 +66,17 @@ def load_input_file(input_file: str, status_fn: Optional[Callable] = None) -> Li
         # Convert to list of dictionaries
         records = df.to_dict(orient="records")
 
-        # Normalize escaped characters in string fields
+        # Normalize escaped characters and symbols in string fields
         # Excel data may contain literal escaped quotes (e.g., \"  ) that should be actual quotes (")
+        # Excel data may contain copyright symbol (©) that should be (C) for portal matching
         for record in records:
             for key, value in record.items():
                 if isinstance(value, str):
                     # Normalize escaped quotes to actual quotes
-                    record[key] = value.replace('\\"', '"')
+                    value = value.replace('\\"', '"')
+                    # Normalize copyright symbol to (C)
+                    value = value.replace('©', '(C)')
+                    record[key] = value
 
         log_success(
             status_fn,
