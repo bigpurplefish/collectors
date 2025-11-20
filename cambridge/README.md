@@ -851,6 +851,13 @@ For issues or questions:
 
 ## Version History
 
+### v1.7.1 (2025-11-19)
+- **Fixed:** Portal search now normalizes escaped quotes in portal_title field
+  - Excel data contains `\"` (backslash + quote) but portal index has `"` (actual quote)
+  - Added automatic normalization: `search_string.replace('\\"', '"')`
+  - Fixes "Product not found in portal index" errors for products with inch measurements
+  - Affected products: KingsCourt, Crusader Bullnose, Crusader Caps, Maytrx Plus Wall, etc.
+
 ### v1.7.0 (2025-11-19)
 - **Added:** Kit as supported unit of sale (priority: Piece > Kit > Sq Ft)
 - **Fixed:** Weight calculation now correctly adjusts based on unit of sale

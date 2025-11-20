@@ -22,24 +22,34 @@ def test_portal_search():
     print("=" * 80)
     print("")
 
-    # Create mock portal index
+    # Create mock portal index (v1.6.0+: products include color in title)
     mock_index = {
         "last_updated": "2025-11-10T12:00:00Z",
-        "total_products": 3,
+        "total_products": 5,
         "products": [
             {
-                "title": "Sherwood Ledgestone 3-Pc. Design Kit",
-                "url": "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit",
+                "title": "Sherwood Ledgestone 3-Pc. Design Kit Onyx",
+                "url": "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit-onyx",
                 "category": "/pavers/sherwood"
             },
             {
-                "title": "RoundTable 3-Pc. Kit",
-                "url": "/pavers/roundtable/roundtable-3-pc-kit",
+                "title": "Sherwood Ledgestone 3-Pc. Design Kit Driftwood",
+                "url": "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit-driftwood",
+                "category": "/pavers/sherwood"
+            },
+            {
+                "title": "RoundTable 3-Pc. Kit Driftwood",
+                "url": "/pavers/roundtable/roundtable-3-pc-kit-driftwood",
                 "category": "/pavers/roundtable"
             },
             {
-                "title": "KingsCourt Circle Kit",
-                "url": "/pavers/kingscourt/kingscourt-circle-kit",
+                "title": "KingsCourt 4\" x 8\" Holland Onyx",
+                "url": "/pavers/kingscourt/kingscourt-4x8-holland-onyx",
+                "category": "/pavers/kingscourt"
+            },
+            {
+                "title": "KingsCourt Circle Kit Coal",
+                "url": "/pavers/kingscourt/kingscourt-circle-kit-coal",
                 "category": "/pavers/kingscourt"
             }
         ]
@@ -51,55 +61,47 @@ def test_portal_search():
     searcher.load_index(mock_index, print)
     print("")
 
-    # Test 1: Exact match
-    print("Test 1: Exact title match")
-    print("Searching for: 'Sherwood Ledgestone 3-Pc. Design Kit'")
-    result = searcher.find_product_by_title("Sherwood Ledgestone 3-Pc. Design Kit", print)
+    # Test 1: Exact title + color match (v1.6.0+)
+    print("Test 1: Exact title + color match")
+    print("Searching for: title='Sherwood Ledgestone 3-Pc. Design Kit', color='Onyx'")
+    result = searcher.find_product_by_title_and_color("Sherwood Ledgestone 3-Pc. Design Kit", "Onyx", print)
     assert result is not None, "Should find exact match"
-    assert result["url"] == "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit"
+    assert result["url"] == "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit-onyx"
     print(f"✓ Found: {result['url']}")
     print("")
 
-    # Test 2: Fuzzy match (slight variation)
-    print("Test 2: Fuzzy match (variation)")
-    print("Searching for: 'Sherwood Ledgestone 3-Pc Kit'")
-    result = searcher.find_product_by_title("Sherwood Ledgestone 3-Pc Kit", print)
-    assert result is not None, "Should find fuzzy match"
-    assert result["url"] == "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit"
+    # Test 2: Exact match with different color
+    print("Test 2: Exact match with different color")
+    print("Searching for: title='Sherwood Ledgestone 3-Pc. Design Kit', color='Driftwood'")
+    result = searcher.find_product_by_title_and_color("Sherwood Ledgestone 3-Pc. Design Kit", "Driftwood", print)
+    assert result is not None, "Should find exact match with different color"
+    assert result["url"] == "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit-driftwood"
     print(f"✓ Found: {result['url']}")
     print("")
 
-    # Test 3: Longer partial match (should work)
-    print("Test 3: Longer partial match")
-    print("Searching for: 'Sherwood Ledgestone'")
-    result = searcher.find_product_by_title("Sherwood Ledgestone", print)
-    assert result is not None, "Should find longer partial match"
-    assert result["url"] == "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit"
+    # Test 3: Escaped quotes normalization (v1.7.1+)
+    print("Test 3: Escaped quotes normalization")
+    print("Searching for: title='KingsCourt 4\\\" x 8\\\" Holland', color='Onyx'")
+    result = searcher.find_product_by_title_and_color('KingsCourt 4\\" x 8\\" Holland', "Onyx", print)
+    assert result is not None, "Should find match after normalizing escaped quotes"
+    assert result["url"] == "/pavers/kingscourt/kingscourt-4x8-holland-onyx"
     print(f"✓ Found: {result['url']}")
     print("")
 
-    # Test 4: Short partial match (below threshold)
-    print("Test 4: Short partial match (below threshold)")
-    print("Searching for: 'Ledgestone'")
-    result = searcher.find_product_by_title("Ledgestone", print)
-    print(f"Result: {result['url'] if result else 'No match (expected for short partial)'}")
-    print("")
-
-    # Test 5: No match (completely different)
-    print("Test 5: No match (completely different)")
-    print("Searching for: 'Completely Different Product'")
-    result = searcher.find_product_by_title("Completely Different Product", print)
-    assert result is None, "Should not find match for completely different product"
+    # Test 4: No match (wrong color)
+    print("Test 4: No match (wrong color)")
+    print("Searching for: title='Sherwood Ledgestone 3-Pc. Design Kit', color='NonExistentColor'")
+    result = searcher.find_product_by_title_and_color("Sherwood Ledgestone 3-Pc. Design Kit", "NonExistentColor", print)
+    assert result is None, "Should not find match for non-existent color"
     print("✓ No match (expected)")
     print("")
 
-    # Test 6: Title and color (portal doesn't use color in URL)
-    print("Test 6: Title and color search (color ignored)")
-    print("Searching for: title='RoundTable 3-Pc. Kit', color='Driftwood'")
-    result = searcher.find_product_by_title_and_color("RoundTable 3-Pc. Kit", "Driftwood", print)
-    assert result is not None, "Should find match (color ignored)"
-    assert result["url"] == "/pavers/roundtable/roundtable-3-pc-kit"
-    print(f"✓ Found: {result['url']}")
+    # Test 5: No match (wrong title)
+    print("Test 5: No match (wrong title)")
+    print("Searching for: title='Completely Different Product', color='Onyx'")
+    result = searcher.find_product_by_title_and_color("Completely Different Product", "Onyx", print)
+    assert result is None, "Should not find match for completely different product"
+    print("✓ No match (expected)")
     print("")
 
     print("=" * 80)

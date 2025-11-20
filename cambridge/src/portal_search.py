@@ -134,6 +134,9 @@ class CambridgePortalSearcher:
         # Construct search string: "[portal_title] [color]"
         search_string = f"{title} {color}".strip()
 
+        # Normalize escaped quotes (Excel data has \" but portal index has ")
+        search_string = search_string.replace('\\"', '"')
+
         log_and_status(
             log,
             f"Searching portal index for exact match: '{search_string}'",

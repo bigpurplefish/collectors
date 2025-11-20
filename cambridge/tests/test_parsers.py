@@ -148,20 +148,19 @@ def test_search():
         assert url, "Exact match failed"
         print(f"✓ Found: {url}")
 
-        # Test fuzzy match
-        print("\nTest 2: Fuzzy match (slight variation)")
-        url = searcher.find_product_url("Sherwood Ledgestone 3-Pc Kit", "Onyx", print)
-        assert url, "Fuzzy match failed"
+        # Test exact match with different color (v1.6.0+: uses exact matching only)
+        print("\nTest 2: Exact match with different color")
+        url = searcher.find_product_url("Sherwood Ledgestone 3-Pc. Design Kit", "Onyx", print)
+        assert url, "Exact match failed"
         print(f"✓ Found: {url}")
 
-        # Test partial match (should work with enough detail)
-        print("\nTest 3: Partial match with sufficient detail")
-        url = searcher.find_product_url("Sherwood Ledgestone 3-Pc Design", "Bluestone", print)
-        assert url, "Partial match failed"
-        print(f"✓ Found: {url}")
+        # Test no match (title doesn't match exactly)
+        print("\nTest 3: No match (title variation)")
+        url = searcher.find_product_url("Sherwood Ledgestone 3-Pc Kit", "Bluestone", print)
+        print(f"Result: {url if url else 'No match (expected - exact match required as of v1.6.0)'}")
 
-        # Test no match
-        print("\nTest 4: No match (threshold)")
+        # Test no match (completely different)
+        print("\nTest 4: No match (different product)")
         url = searcher.find_product_url("Completely Different Product Name", "Red", print)
         print(f"Result: {url if url else 'No match (expected)'}")
 
