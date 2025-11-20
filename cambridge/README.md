@@ -851,6 +851,15 @@ For issues or questions:
 
 ## Version History
 
+### v1.7.3 (2025-11-20)
+- **Added:** Incremental saving for both skip and overwrite modes
+  - Output file now updated after each successful product (not just at the end)
+  - Preserves progress if script is interrupted mid-processing
+  - Overwrite mode: Replaces products as processed, preserves unprocessed ones
+  - Skip mode: Adds new products incrementally without re-processing existing ones
+  - Loads existing output file in both modes at startup
+  - Uses dictionary internally for efficient updates
+
 ### v1.7.2 (2025-11-20)
 - **Fixed:** Escaped characters now normalized at data loading stage (processor.py)
   - All string fields from Excel are normalized when loaded: `\"` → `"`

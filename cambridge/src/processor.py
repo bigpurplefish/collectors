@@ -244,19 +244,21 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
         )
         product_families = generator.group_by_title(records, status_fn)
 
-        # Load existing output if in skip mode
+        # Load existing output (for both skip and overwrite modes)
+        # This allows incremental saving in both modes
         existing_products = {}
-        if processing_mode == "skip" and os.path.exists(output_file):
+        if os.path.exists(output_file):
             try:
                 with open(output_file, "r", encoding="utf-8") as f:
                     existing_data = json.load(f)
                     existing_products = {
                         p["title"]: p for p in existing_data.get("products", [])
                     }
+                mode_msg = "skip mode enabled" if processing_mode == "skip" else "overwrite mode enabled"
                 log_and_status(
                     status_fn,
-                    msg=f"Loaded {len(existing_products)} existing products from {output_file} (skip mode enabled)",
-                    ui_msg=f"Loaded {len(existing_products)} existing products (skip mode)"
+                    msg=f"Loaded {len(existing_products)} existing products from {output_file} ({mode_msg})",
+                    ui_msg=f"Loaded {len(existing_products)} existing products ({mode_msg})"
                 )
             except Exception as e:
                 log_warning(
@@ -266,7 +268,8 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 )
 
         # Process each product family
-        products = []
+        # Use dictionary for easy updates and incremental saving
+        products_dict = existing_products.copy()
         failures = []  # Track failed products with details
         warnings = []  # Track products with warnings (missing portal data)
         success_count = 0
@@ -291,14 +294,14 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 details=f"Variants={len(variant_records)}, Colors=[{colors_str}]"
             )
 
-            # Skip if already processed
-            if processing_mode == "skip" and portal_title in existing_products:
+            # Skip if already processed (skip mode only)
+            if processing_mode == "skip" and portal_title in products_dict:
                 log_and_status(
                     status_fn,
                     msg=f"[{i}/{len(product_families)}] Skipping: {portal_title} (already processed, skip mode enabled)",
                     ui_msg="  ⏭ Skipping (already processed)"
                 )
-                products.append(existing_products[portal_title])
+                # Product already in dictionary, no need to add again
                 skip_count += 1
                 continue
 
@@ -466,8 +469,20 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     log=status_fn
                 )
 
-                products.append(product)
+                # Update dictionary and save incrementally
+                products_dict[portal_title] = product
                 success_count += 1
+
+                # Save progress incrementally (preserves work if interrupted)
+                try:
+                    products_list = list(products_dict.values())
+                    save_output_file(products_list, output_file, None)  # Don't log every save
+                except Exception as e:
+                    log_warning(
+                        status_fn,
+                        msg="Failed to save incremental progress",
+                        details=f"Error: {str(e)}"
+                    )
 
                 # Track warnings
                 if portal_warnings or using_portal_fallback:
@@ -522,10 +537,12 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 fail_count += 1
                 continue
 
-        # Save output
+        # Save output (final save with logging)
         log_and_status(status_fn, "", ui_msg="")
         log_section_header(status_fn, "SAVING OUTPUT")
 
+        # Convert dictionary to list for final save
+        products = list(products_dict.values())
         save_output_file(products, output_file, status_fn)
 
         # Save comprehensive report with failures and warnings
