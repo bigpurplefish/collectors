@@ -883,6 +883,13 @@ For issues or questions:
 
 ## Version History
 
+### v1.8.3 (2025-11-21)
+- **Documented:** Field ordering compliance with GRAPHQL_OUTPUT_REQUIREMENTS.md
+  - Product fields: Large arrays (variants, images) placed at bottom for human readability
+  - Variant fields: option1 and option2 grouped together as required
+  - Added clarifying comments in product_generator.py
+  - Verified full compliance with standard requirements
+
 ### v1.8.2 (2025-11-21)
 - **Refactored:** Text normalization now uses shared utility
   - Moved text normalization logic to `/collectors/shared/utils/text_utils.py`

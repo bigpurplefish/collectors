@@ -98,6 +98,8 @@ class CambridgeProductGenerator:
             Shopify product dictionary (GraphQL 2025-10 format)
         """
         # Generate product structure
+        # Note: Field order matters for human readability
+        # Large arrays (variants, images) are placed at the bottom
         product = {
             "title": title,
             "descriptionHtml": self._generate_description_html(public_data),
@@ -105,6 +107,7 @@ class CambridgeProductGenerator:
             "status": "ACTIVE",
             "options": self._generate_options(variant_records, portal_data_by_color),
             "metafields": self._generate_metafields(public_data),
+            # Large arrays at bottom for easier human scanning
             "variants": self._generate_variants(variant_records, portal_data_by_color, title),
             "images": self._generate_images(public_data, portal_data_by_color, title, variant_records),
         }
