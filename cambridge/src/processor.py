@@ -69,6 +69,8 @@ def load_input_file(input_file: str, status_fn: Optional[Callable] = None) -> Li
         # Normalize escaped characters and symbols in string fields
         # Excel data may contain literal escaped quotes (e.g., \"  ) that should be actual quotes (")
         # Excel data may contain copyright symbol (©) that should be (C) for portal matching
+        # Excel data may contain multiple spaces that should be collapsed to single spaces
+        import re
         for record in records:
             for key, value in record.items():
                 if isinstance(value, str):
@@ -76,6 +78,8 @@ def load_input_file(input_file: str, status_fn: Optional[Callable] = None) -> Li
                     value = value.replace('\\"', '"')
                     # Normalize copyright symbol to (C)
                     value = value.replace('©', '(C)')
+                    # Normalize multiple spaces to single space
+                    value = re.sub(r'\s+', ' ', value).strip()
                     record[key] = value
 
         log_success(

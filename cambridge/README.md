@@ -901,11 +901,13 @@ For issues or questions:
   - Colors collected in same order as they appear in input file
   - Makes logs clearer and easier to follow
   - Previously used set() which randomized collection order
-- **Added:** Title normalization for copyright symbols
-  - Automatically converts `©` to `(C)` in Excel input data at load time
-  - Normalizes portal index titles when loaded from cache
-  - Ensures consistent matching between Excel input and portal index
-  - Normalized titles appear in output file
+- **Added:** Data normalization for consistent matching
+  - **Copyright symbols**: Automatically converts `©` to `(C)`
+  - **Whitespace**: Collapses multiple spaces to single space (e.g., "Product  Name" → "Product Name")
+  - Applied to Excel input data at load time
+  - Applied to cached index titles when loaded
+  - Ensures consistent matching between Excel input and product indexes
+  - Normalized data appears in output file
 - **Changed:** GUI label renamed from "Skip Processed Products" to "Skip Processed Variants"
 - **Added:** Variant-level statistics in processing summary
   - Successful variants (newly processed)

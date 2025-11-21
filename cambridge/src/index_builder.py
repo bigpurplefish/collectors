@@ -301,10 +301,13 @@ def load_index_from_cache(cache_file: str, log: Callable = print) -> Dict[str, A
 
         # Normalize product titles in the index
         # Convert copyright symbol (©) to (C) for consistent matching
+        # Convert multiple spaces to single space for consistent matching
+        import re
         if "products" in index:
             for product in index["products"]:
                 if "title" in product and isinstance(product["title"], str):
                     product["title"] = product["title"].replace('©', '(C)')
+                    product["title"] = re.sub(r'\s+', ' ', product["title"]).strip()
 
         log_success(
             log,
