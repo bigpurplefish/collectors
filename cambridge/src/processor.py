@@ -641,6 +641,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 # Rebuild variants list in original spreadsheet order
                 ordered_variants = []
                 skipped_colors = set()
+                used_generated_keys = set()  # Track which generated variants we've used
 
                 for variant_record in variant_records:
                     color = variant_record.get("color", "").strip()
@@ -675,6 +676,19 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                         skipped_colors.add(color)
                     elif variant_key in generated_variants_map:
                         ordered_variants.append(generated_variants_map[variant_key])
+                        used_generated_keys.add(variant_key)
+
+                # SAFETY NET: Add any generated variants that weren't matched by spreadsheet order
+                # This handles edge cases where generated variants don't match input records
+                for variant_key, variant in generated_variants_map.items():
+                    if variant_key not in used_generated_keys and variant not in ordered_variants:
+                        ordered_variants.append(variant)
+                        color = variant_key[0]
+                        log_warning(
+                            status_fn,
+                            msg=f"Variant {variant_key} generated but not in spreadsheet order - adding at end",
+                            details=f"Product: {portal_title}, Color: {color}"
+                        )
 
                 # Replace product variants with ordered list
                 product["variants"] = ordered_variants

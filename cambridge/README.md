@@ -883,6 +883,13 @@ For issues or questions:
 
 ## Version History
 
+### v1.8.1 (2025-11-21)
+- **Fixed:** Variant ordering safety net to prevent 0-variant products
+  - Added check to include all generated variants even if not matched by spreadsheet order
+  - Prevents silent dropping of variants due to edge cases
+  - Logs warning when variants are added at end (not in original order)
+  - Ensures all successfully generated variants appear in output
+
 ### v1.8.0 (2025-11-20)
 - **Changed:** Skip mode now operates at **variant level by color+unit combination**
   - Each input record (variant) is checked individually by its color AND unit
