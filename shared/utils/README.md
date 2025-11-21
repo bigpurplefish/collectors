@@ -52,6 +52,65 @@ python3 tests/test_sku_generator.py
 
 ---
 
+### Text Normalization (`text_utils.py`)
+
+Text normalization utilities for consistent data processing across all collectors.
+
+**Purpose**: Provide standardized text normalization functions to ensure consistent matching and storage of product data.
+
+**Key Features**:
+- ✅ Normalizes escaped quotes (`\"` → `"`)
+- ✅ Normalizes copyright symbols (`©` → `(C)`)
+- ✅ Collapses multiple whitespace to single space
+- ✅ Strips leading/trailing whitespace
+- ✅ Works on strings, dictionaries, and lists
+
+**Usage**:
+```python
+from shared.utils.text_utils import (
+    normalize_text,
+    normalize_dict_strings,
+    normalize_product_titles
+)
+
+# Normalize a single string
+title = normalize_text("Product  Name")  # "Product Name"
+title = normalize_text('Product\\"Name')  # 'Product"Name'
+title = normalize_text("Product © 2024")  # "Product (C) 2024"
+
+# Normalize all strings in a dictionary (e.g., Excel input records)
+record = {"title": "Product  Name", "color": "Red  Blue"}
+normalized = normalize_dict_strings(record)
+# {"title": "Product Name", "color": "Red Blue"}
+
+# Normalize product titles in an index (e.g., after loading from cache)
+products = [
+    {"title": "Product  1", "price": 10},
+    {"title": "Product  2", "price": 20}
+]
+normalize_product_titles(products, title_field="title")
+# Products are normalized in-place
+```
+
+**Common Use Cases**:
+- **Input data loading**: Normalize Excel data after loading
+- **Index loading**: Normalize cached product indexes
+- **Search matching**: Ensure consistent matching between input and indexes
+
+**Example (Cambridge Collector)**:
+```python
+# In processor.py - normalize input records
+from shared.utils.text_utils import normalize_dict_strings
+records = [normalize_dict_strings(record) for record in records]
+
+# In index_builder.py - normalize cached index titles
+from shared.utils.text_utils import normalize_product_titles
+if "products" in index:
+    normalize_product_titles(index["products"], title_field="title")
+```
+
+---
+
 ### Batcher (`batcher.py`)
 
 Batch processing utility for handling large datasets.
@@ -106,6 +165,7 @@ def my_function():
 
 ## Version History
 
+- **2025-11-21**: Added Text Normalization utility for consistent data processing
 - **2025-11-11**: Added SKU Generator utility with cross-collector uniqueness
 - **2024**: Initial utilities (batcher, json_to_excel_converter)
 

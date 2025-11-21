@@ -67,20 +67,10 @@ def load_input_file(input_file: str, status_fn: Optional[Callable] = None) -> Li
         records = df.to_dict(orient="records")
 
         # Normalize escaped characters and symbols in string fields
-        # Excel data may contain literal escaped quotes (e.g., \"  ) that should be actual quotes (")
-        # Excel data may contain copyright symbol (©) that should be (C) for portal matching
-        # Excel data may contain multiple spaces that should be collapsed to single spaces
-        import re
-        for record in records:
-            for key, value in record.items():
-                if isinstance(value, str):
-                    # Normalize escaped quotes to actual quotes
-                    value = value.replace('\\"', '"')
-                    # Normalize copyright symbol to (C)
-                    value = value.replace('©', '(C)')
-                    # Normalize multiple spaces to single space
-                    value = re.sub(r'\s+', ' ', value).strip()
-                    record[key] = value
+        # Uses shared text normalization utility for consistent processing
+        from shared.utils.text_utils import normalize_dict_strings
+
+        records = [normalize_dict_strings(record) for record in records]
 
         log_success(
             status_fn,

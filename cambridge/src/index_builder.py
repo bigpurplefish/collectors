@@ -300,14 +300,11 @@ def load_index_from_cache(cache_file: str, log: Callable = print) -> Dict[str, A
             index = json.load(f)
 
         # Normalize product titles in the index
-        # Convert copyright symbol (©) to (C) for consistent matching
-        # Convert multiple spaces to single space for consistent matching
-        import re
+        # Uses shared text normalization utility for consistent processing
+        from shared.utils.text_utils import normalize_product_titles
+
         if "products" in index:
-            for product in index["products"]:
-                if "title" in product and isinstance(product["title"], str):
-                    product["title"] = product["title"].replace('©', '(C)')
-                    product["title"] = re.sub(r'\s+', ' ', product["title"]).strip()
+            normalize_product_titles(index["products"], title_field="title")
 
         log_success(
             log,

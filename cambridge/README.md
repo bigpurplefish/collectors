@@ -883,6 +883,13 @@ For issues or questions:
 
 ## Version History
 
+### v1.8.2 (2025-11-21)
+- **Refactored:** Text normalization now uses shared utility
+  - Moved text normalization logic to `/collectors/shared/utils/text_utils.py`
+  - All collectors can now use consistent text normalization
+  - No behavior changes - same normalization rules applied
+  - Cleaner code with better reusability
+
 ### v1.8.1 (2025-11-21)
 - **Fixed:** Variant ordering safety net to prevent 0-variant products
   - Added check to include all generated variants even if not matched by spreadsheet order
