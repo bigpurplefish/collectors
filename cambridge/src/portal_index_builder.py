@@ -213,7 +213,11 @@ class CambridgePortalIndexBuilder:
                 log_error(log, "Failed to login - cannot fetch product details")
                 return self._create_index(all_products)
 
-            # Fetch products from each category
+            # Fetch products from each category with early bail-out
+            # Try a small sample first; if all fail, skip remaining and use cache
+            PROBE_COUNT = 5
+            probe_failures = 0
+
             for i, category_url in enumerate(category_urls, 1):
                 log_progress(
                     log,
@@ -223,13 +227,29 @@ class CambridgePortalIndexBuilder:
                     details=f"Category: {category_url}"
                 )
 
+                is_probing = i <= PROBE_COUNT and len(all_products) == 0
                 try:
-                    products = self._fetch_products_from_category(category_url, log)
+                    products = self._fetch_products_from_category(category_url, log, probe=is_probing)
                     all_products.extend(products)
-                    log_success(log, f"Found {len(products)} products from {category_url}")
+                    if products:
+                        log_success(log, f"Found {len(products)} products from {category_url}")
+                    else:
+                        if is_probing:
+                            probe_failures += 1
                 except Exception as e:
                     log_warning(log, f"Error fetching products from {category_url}", details=str(e))
+                    if is_probing:
+                        probe_failures += 1
                     continue
+
+                # Early bail-out: if first N categories all returned 0 products, API is likely blocked
+                if i == PROBE_COUNT and probe_failures == PROBE_COUNT and len(all_products) == 0:
+                    log_warning(
+                        log,
+                        f"First {PROBE_COUNT} categories all failed - API likely blocked by bot detection",
+                        details=f"Skipping remaining {len(category_urls) - PROBE_COUNT} categories"
+                    )
+                    break
 
             log_section_header(log, f"INDEX BUILD COMPLETE: {len(all_products)} products")
 
@@ -313,7 +333,8 @@ class CambridgePortalIndexBuilder:
     def _fetch_products_from_category(
         self,
         category_url: str,
-        log: Callable
+        log: Callable,
+        probe: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Fetch individual product variants from a category using authenticated search API.
@@ -343,13 +364,14 @@ class CambridgePortalIndexBuilder:
             # Rate limiting: delay between requests to avoid triggering bot detection
             time.sleep(1.5)
 
-            # Retry logic with exponential backoff
-            max_retries = 3
+            # Probe mode uses shorter timeout and single attempt for fast detection
+            request_timeout = 10000 if probe else 60000
+            max_retries = 1 if probe else 3
             response = None
             for attempt in range(max_retries):
                 try:
                     # Use Playwright to fetch search API (authenticated) with increased timeout
-                    response = self._page.request.get(search_url, timeout=60000)
+                    response = self._page.request.get(search_url, timeout=request_timeout)
                     if response.ok:
                         break
                 except PlaywrightTimeoutError:

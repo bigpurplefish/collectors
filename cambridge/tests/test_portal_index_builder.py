@@ -190,11 +190,12 @@ def test_retry_config():
     source = inspect.getsource(CambridgePortalIndexBuilder._fetch_products_from_category)
 
     # Verify key configuration values
-    assert "max_retries = 3" in source, "max_retries should be 3"
-    print("✓ max_retries = 3")
+    assert "max_retries = 1 if probe else 3" in source, "max_retries should be 1 (probe) or 3 (normal)"
+    print("✓ max_retries = 1 (probe) / 3 (normal)")
 
-    assert "timeout=60000" in source, "timeout should be 60000 (60 seconds)"
-    print("✓ timeout = 60000 (60 seconds)")
+    assert "timeout=request_timeout" in source, "timeout should use request_timeout variable"
+    assert "10000 if probe else 60000" in source, "request_timeout should be 10s (probe) / 60s (normal)"
+    print("✓ timeout = 10s (probe) / 60s (normal)")
 
     assert "time.sleep(1.5)" in source, "rate limiting delay should be 1.5 seconds"
     print("✓ rate limiting delay = 1.5 seconds")
@@ -204,6 +205,14 @@ def test_retry_config():
 
     assert "PlaywrightTimeoutError" in source, "should catch PlaywrightTimeoutError"
     print("✓ catches PlaywrightTimeoutError specifically")
+
+    # Verify early bail-out in build_index
+    build_source = inspect.getsource(CambridgePortalIndexBuilder.build_index)
+    assert "PROBE_COUNT = 5" in build_source, "early bail-out probe count should be 5"
+    print("✓ early bail-out PROBE_COUNT = 5")
+
+    assert "probe_failures" in build_source, "build_index should track probe failures"
+    print("✓ early bail-out tracks probe failures")
 
     print("")
     print("=" * 80)
