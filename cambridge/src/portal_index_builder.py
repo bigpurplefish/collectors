@@ -17,7 +17,7 @@ import sys
 import os
 from datetime import datetime
 from typing import Dict, List, Any, Callable, Optional
-from playwright.sync_api import sync_playwright, Browser, Page
+from playwright.sync_api import sync_playwright, Browser, Page, TimeoutError as PlaywrightTimeoutError
 
 # Add parent directories to path for shared imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
@@ -30,6 +30,9 @@ from shared.utils.logging_utils import (
     log_and_status,
     log_progress
 )
+
+from src.config import PORTAL_INDEX_CACHE_FILE
+from src.index_builder import load_index_from_cache
 
 
 class CambridgePortalIndexBuilder:
@@ -103,8 +106,12 @@ class CambridgePortalIndexBuilder:
             # Start Playwright
             self._playwright = sync_playwright().start()
             self._browser = self._playwright.chromium.launch(headless=True)
+            # Anti-detection: Configure browser context to appear more human
             context = self._browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+                viewport={"width": 1920, "height": 1080},
+                locale="en-US",
+                timezone_id="America/New_York",
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
             self._page = context.new_page()
 
@@ -226,6 +233,24 @@ class CambridgePortalIndexBuilder:
 
             log_section_header(log, f"INDEX BUILD COMPLETE: {len(all_products)} products")
 
+            # Fallback to cached index if fresh build returned 0 products (likely bot detection)
+            if len(all_products) == 0:
+                log_warning(
+                    log,
+                    "Fresh build returned 0 products - likely bot detection",
+                    details="Falling back to cached index"
+                )
+                cached_index = load_index_from_cache(PORTAL_INDEX_CACHE_FILE, log)
+                if cached_index and cached_index.get("products"):
+                    log_success(
+                        log,
+                        f"Using cached index with {len(cached_index['products'])} products"
+                    )
+                    return cached_index
+                else:
+                    log_error(log, "No cached index available - cannot proceed")
+                    return {"products": [], "total_products": 0, "last_updated": None}
+
             return self._create_index(all_products)
 
         except Exception as e:
@@ -315,13 +340,40 @@ class CambridgePortalIndexBuilder:
         )
 
         try:
-            # Use Playwright to fetch search API (authenticated)
-            response = self._page.request.get(search_url, timeout=30000)
+            # Rate limiting: delay between requests to avoid triggering bot detection
+            time.sleep(1.5)
 
-            if response.status != 200:
+            # Retry logic with exponential backoff
+            max_retries = 3
+            response = None
+            for attempt in range(max_retries):
+                try:
+                    # Use Playwright to fetch search API (authenticated) with increased timeout
+                    response = self._page.request.get(search_url, timeout=60000)
+                    if response.ok:
+                        break
+                except PlaywrightTimeoutError:
+                    if attempt < max_retries - 1:
+                        delay = 2 ** attempt  # 1s, 2s, 4s exponential backoff
+                        log_warning(
+                            log,
+                            f"Timeout - retry {attempt + 1}/{max_retries} after {delay}s",
+                            details=f"Category: {category_url}"
+                        )
+                        time.sleep(delay)
+                    else:
+                        log_warning(
+                            log,
+                            f"Failed after {max_retries} retries",
+                            details=f"Category: {category_url}"
+                        )
+                        return []  # Return empty for this category, continue with others
+
+            if response is None or response.status != 200:
+                status = response.status if response else "no response"
                 log_warning(
                     log,
-                    f"Search API returned status {response.status}",
+                    f"Search API returned status {status}",
                     details=f"Category: {category_url}"
                 )
                 return []
