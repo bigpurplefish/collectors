@@ -240,31 +240,11 @@ class CambridgeCollector:
             Dictionary with public website data
         """
         try:
-            log(f"Fetching public page: {product_url}")
+            log(f"Scraping public page: {product_url}")
 
-            response = self.session.get(product_url, timeout=self.config.get("timeout", 30))
-            response.raise_for_status()
-
-            # Parse page
-            data = self.public_parser.parse_page(response.text)
-
-            # Extract ALL gallery images using Playwright (opens lightbox)
-            # This gets all 20 images instead of just the 10 in the HTML
-            # Share portal parser's browser instance to avoid asyncio conflicts
-            log(f"  Extracting gallery images via Playwright lightbox...")
+            # Single Playwright navigation extracts everything
             shared_browser = self.portal_parser._browser if hasattr(self.portal_parser, '_browser') else None
-            gallery_playwright = self.public_parser.extract_gallery_images_with_playwright(
-                product_url,
-                log,
-                shared_browser=shared_browser
-            )
-
-            # Use Playwright images if available, otherwise fall back to HTML parsing
-            if gallery_playwright:
-                data["gallery_images"] = gallery_playwright
-                log(f"  ✓ Extracted {len(gallery_playwright)} images from lightbox")
-            else:
-                log(f"  ⚠ Playwright gallery extraction failed, no gallery detected ({len(data.get('gallery_images', []))} images)")
+            data = self.public_parser.scrape_page(product_url, log, shared_browser)
 
             # Log what was captured
             hero = data.get("hero_image", "")

@@ -20,10 +20,14 @@ if [ "$PYENV_VERSION" != "cambridge" ] && [ "$(cat .python-version 2>/dev/null)"
     echo ""
 fi
 
-# Test 1: Parser Tests (fast)
-echo "Running Parser Tests (fast)..."
+# Test 1: Parser Tests (fast, or with --all for Playwright tests)
+echo "Running Parser Tests..."
 echo "--------------------------------------------------------------------------------"
-python3 tests/test_parsers.py
+if [ "$1" == "--all" ]; then
+    python3 tests/test_parsers.py --all
+else
+    python3 tests/test_parsers.py
+fi
 PARSER_RESULT=$?
 echo ""
 

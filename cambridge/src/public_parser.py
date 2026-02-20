@@ -1,19 +1,19 @@
 """
 Parser for Cambridge public website (www.cambridgepavers.com).
 
-Extracts:
-- Hero image (top of page)
-- Gallery images (carousel + lightbox via Playwright)
+Extracts all product data from JS-rendered DOM via Playwright:
+- Hero image
+- Gallery images (lightbox, 20+ images)
 - Product description
 - Specifications
+- Title, collection, colors, swatch images
 """
 
 import re
 import sys
 import os
 import time
-from typing import Dict, List, Any, Optional, Callable
-from bs4 import BeautifulSoup
+from typing import Dict, List, Any, Optional, Callable, Tuple
 from playwright.sync_api import sync_playwright, Browser, Page, TimeoutError as PlaywrightTimeoutError
 
 # Add parent directories to path for shared imports
@@ -33,100 +33,18 @@ class CambridgePublicParser:
         self.config = config
         self.origin = config.get("public_origin", "https://www.cambridgepavers.com")
 
-    def parse_page(self, html_text: str) -> Dict[str, Any]:
-        """
-        Parse product page HTML from public website.
-
-        Args:
-            html_text: HTML content of product page
-
-        Returns:
-            Dictionary with extracted data:
-            - hero_image: URL of hero image
-            - gallery_images: List of gallery image URLs
-            - description: Product description text
-            - specifications: Product specifications text
-        """
-        soup = BeautifulSoup(html_text, "lxml")
-
-        return {
-            "hero_image": self._extract_hero_image(soup),
-            "gallery_images": self._extract_gallery_images(soup),
-            "description": self._extract_description(soup),
-            "specifications": self._extract_specifications(soup),
-            "title": self._extract_title(soup),
-            "collection": self._extract_collection(soup),
-            "colors": self._extract_colors(soup),
-        }
-
-    def _extract_hero_image(self, soup: BeautifulSoup) -> str:
-        """
-        Extract hero image URL from page.
-
-        The hero image is the main product image at the top of the page.
-
-        Args:
-            soup: BeautifulSoup object
-
-        Returns:
-            Hero image URL or empty string
-        """
-        # Look for the main product image in the image-box
-        # Pattern: <div class="image-box style-2 ..."><img src="..." alt="..."></div>
-        image_box = soup.find("div", class_="image-box")
-        if image_box:
-            img = image_box.find("img", src=True)
-            if img:
-                src = img["src"]
-                return self._normalize_image_url(src)
-
-        return ""
-
-    def _extract_gallery_images(self, soup: BeautifulSoup) -> List[str]:
-        """
-        Extract gallery images from carousel.
-
-        Gallery images are in the owl-carousel div below the hero image.
-        Note: This only extracts images visible in the HTML. Use
-        extract_gallery_images_with_playwright() to get all images
-        from the lightbox (recommended).
-
-        Args:
-            soup: BeautifulSoup object
-
-        Returns:
-            List of gallery image URLs
-        """
-        gallery_urls = []
-
-        # Find the owl-carousel div
-        carousel = soup.find("div", class_="owl-carousel")
-        if not carousel:
-            return gallery_urls
-
-        # Find all images in the carousel
-        for overlay_container in carousel.find_all("div", class_="overlay-container"):
-            img = overlay_container.find("img", src=True)
-            if img:
-                src = img["src"]
-                url = self._normalize_image_url(src)
-                if url:
-                    gallery_urls.append(url)
-
-        return gallery_urls
-
-    def extract_gallery_images_with_playwright(
+    def scrape_page(
         self,
         product_url: str,
         log: Callable = print,
-        shared_browser = None
-    ) -> List[str]:
+        shared_browser=None
+    ) -> Dict[str, Any]:
         """
-        Extract ALL gallery images by opening the lightbox with Playwright.
+        Scrape a product page using Playwright (single navigation).
 
-        Cambridge's website only includes ~10 images in the initial HTML,
-        but loads up to 20 images dynamically in the lightbox. This method
-        clicks through the lightbox to extract all image URLs.
+        Navigates to the product URL, waits for JS rendering, then extracts
+        all fields from the rendered DOM. Also opens the lightbox to extract
+        all gallery images (20+).
 
         Args:
             product_url: Full product URL to visit
@@ -134,10 +52,29 @@ class CambridgePublicParser:
             shared_browser: Optional shared Playwright browser instance (avoids asyncio conflicts)
 
         Returns:
-            List of all gallery image URLs from lightbox
+            Dictionary with extracted data:
+            - hero_image: URL of hero image
+            - gallery_images: List of gallery image URLs
+            - description: Product description text
+            - specifications: Product specifications text
+            - title: Product title
+            - collection: Collection name
+            - colors: List of color names
+            - color_swatches: Dict mapping color name to swatch image URL
         """
-        gallery_urls = []
+        result = {
+            "hero_image": "",
+            "gallery_images": [],
+            "description": "",
+            "specifications": "",
+            "title": "",
+            "collection": "",
+            "colors": [],
+            "color_swatches": {},
+        }
+
         playwright_instance = None
+        page = None
 
         try:
             # Use shared browser if provided, otherwise create new instance
@@ -156,7 +93,130 @@ class CambridgePublicParser:
             page.goto(product_url, wait_until="networkidle", timeout=30000)
             time.sleep(2)
 
-            # Find and click the first gallery image to open lightbox
+            # Extract text fields from rendered DOM
+            fields = page.evaluate("""
+                (() => {
+                    const data = {};
+
+                    // Title: h1.page-title strong, fallback title tag, fallback h1
+                    const pageTitle = document.querySelector('h1.page-title strong');
+                    if (pageTitle) {
+                        data.title = pageTitle.textContent.trim();
+                    } else {
+                        const titleTag = document.querySelector('title');
+                        if (titleTag) {
+                            data.title = titleTag.textContent.trim();
+                        } else {
+                            const h1 = document.querySelector('h1');
+                            data.title = h1 ? h1.textContent.trim() : '';
+                        }
+                    }
+
+                    // Collection: h4 span
+                    const h4 = document.querySelector('h4');
+                    if (h4) {
+                        const span = h4.querySelector('span');
+                        data.collection = span ? span.textContent.trim() : '';
+                    } else {
+                        data.collection = '';
+                    }
+
+                    // Description: strong containing "Description:", get parent text minus label
+                    data.description = '';
+                    const allStrong = document.querySelectorAll('strong');
+                    for (const s of allStrong) {
+                        if (/description:/i.test(s.textContent)) {
+                            const parent = s.parentElement;
+                            if (parent) {
+                                let text = parent.textContent.trim();
+                                text = text.replace(/^Description:\\s*/i, '');
+                                data.description = text.trim();
+                            }
+                            break;
+                        }
+                    }
+
+                    // Specifications: strong containing "Specifications:", get sibling p or parent text
+                    data.specifications = '';
+                    for (const s of allStrong) {
+                        if (/specifications:/i.test(s.textContent)) {
+                            const parent = s.parentElement;
+                            if (parent) {
+                                const p = parent.querySelector('p');
+                                if (p) {
+                                    data.specifications = p.textContent.trim();
+                                } else {
+                                    let text = parent.textContent.trim();
+                                    text = text.replace(/^Specifications:\\s*/i, '');
+                                    data.specifications = text.trim();
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    // Colors + swatches: strong containing "Color Selection:", sibling row, col-* divs
+                    data.colors = [];
+                    data.color_swatches = {};
+                    for (const s of allStrong) {
+                        if (/color selection:/i.test(s.textContent)) {
+                            const parentRow = s.closest('.row');
+                            if (parentRow) {
+                                const swatchesRow = parentRow.nextElementSibling;
+                                if (swatchesRow && swatchesRow.classList.contains('row')) {
+                                    const cols = swatchesRow.querySelectorAll('[class*="col-"]');
+                                    for (const col of cols) {
+                                        const nameSpan = col.querySelector('span.small');
+                                        if (nameSpan) {
+                                            const name = nameSpan.textContent.trim();
+                                            if (name) {
+                                                data.colors.push(name);
+                                                const img = col.querySelector('img');
+                                                if (img && img.src) {
+                                                    data.color_swatches[name] = img.src;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    return data;
+                })()
+            """)
+
+            result["title"] = fields.get("title", "")
+            result["collection"] = fields.get("collection", "")
+            result["description"] = fields.get("description", "")
+            result["specifications"] = fields.get("specifications", "")
+            result["colors"] = fields.get("colors", [])
+
+            # Normalize swatch URLs
+            raw_swatches = fields.get("color_swatches", {})
+            for name, url in raw_swatches.items():
+                result["color_swatches"][name] = self._normalize_image_url(url)
+
+            # Extract hero image from .image-box
+            try:
+                hero_src = page.evaluate("""
+                    (() => {
+                        const box = document.querySelector('.image-box');
+                        if (!box) return '';
+                        const img = box.querySelector('img[src]');
+                        return img ? img.src : '';
+                    })()
+                """)
+                if hero_src:
+                    result["hero_image"] = self._normalize_image_url(hero_src)
+                    log(f"    Hero image: {result['hero_image']}")
+            except Exception as e:
+                log(f"    Hero image extraction failed: {e}")
+
+            # Extract gallery images from lightbox
+            gallery_urls = []
             try:
                 first_image = page.locator("a.popup-img").first
                 image_count = first_image.count()
@@ -164,39 +224,31 @@ class CambridgePublicParser:
 
                 if image_count > 0:
                     log(f"    Clicking first image to open lightbox...")
-                    # Use JavaScript click since element might be outside viewport
                     page.evaluate("document.querySelector('a.popup-img').click()")
                     time.sleep(1)
 
-                    # Wait for lightbox to appear
                     log(f"    Waiting for lightbox...")
                     page.wait_for_selector(".mfp-img", timeout=5000)
 
-                    # Extract total image count from counter
                     counter = page.locator(".mfp-counter").text_content()
                     log(f"    Lightbox counter: {counter}")
 
-                    # Counter format: "1 of 20"
                     if " of " in counter:
                         total_images = int(counter.split(" of ")[1])
                     else:
-                        total_images = 10  # Fallback
+                        total_images = 10
 
                     log(f"    Extracting {total_images} images from lightbox...")
 
-                    # Collect all image URLs by clicking through lightbox
                     for i in range(total_images):
-                        # Get current image URL
                         img_element = page.locator(".mfp-img")
                         if img_element.count() > 0:
                             src = img_element.get_attribute("src")
                             if src:
                                 url = self._normalize_image_url(src)
-                                # Don't skip duplicates - track all positions
                                 gallery_urls.append(url)
                                 log(f"      Position {i+1}: {url}")
 
-                        # Click next arrow (if not last image)
                         if i < total_images - 1:
                             next_button = page.locator(".mfp-arrow-right")
                             if next_button.count() > 0:
@@ -205,182 +257,37 @@ class CambridgePublicParser:
 
                     # Deduplicate while preserving order
                     original_count = len(gallery_urls)
-                    gallery_urls = list(dict.fromkeys(gallery_urls))  # Remove duplicates, preserve order
+                    gallery_urls = list(dict.fromkeys(gallery_urls))
                     if original_count > len(gallery_urls):
                         log(f"    Removed {original_count - len(gallery_urls)} duplicates")
                 else:
                     log(f"    No popup-img links found, skipping lightbox extraction")
 
             except PlaywrightTimeoutError as e:
-                # Lightbox didn't open, fall back to HTML parsing
                 log(f"    Lightbox timeout: {e}")
 
-            # Close page (always) and browser (only if we created it)
-            page.close()
-            if should_close_browser:
-                browser.close()
-                if playwright_instance:
-                    playwright_instance.stop()
+            result["gallery_images"] = gallery_urls
 
         except Exception as e:
-            # If Playwright fails, return empty list (caller will fall back to HTML parsing)
-            log(f"    Playwright gallery extraction error: {e}")
+            log(f"    Playwright scrape_page error: {e}")
             import traceback
             log(traceback.format_exc())
 
-        return gallery_urls
+        finally:
+            # Close page (always) and browser (only if we created it)
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            if playwright_instance:
+                try:
+                    browser.close()
+                    playwright_instance.stop()
+                except Exception:
+                    pass
 
-    def _extract_description(self, soup: BeautifulSoup) -> str:
-        """
-        Extract product description.
-
-        Description is in a paragraph following <strong>Description:</strong>
-
-        Args:
-            soup: BeautifulSoup object
-
-        Returns:
-            Description text or empty string
-        """
-        # Find the <strong>Description:</strong> tag
-        description_label = soup.find("strong", string=re.compile(r"Description:", re.IGNORECASE))
-        if not description_label:
-            return ""
-
-        # Find the parent element and get the next paragraph
-        parent = description_label.find_parent()
-        if not parent:
-            return ""
-
-        # Get text from the paragraph, skipping the "Description:" label
-        text = parent.get_text(separator=" ", strip=True)
-
-        # Remove "Description:" prefix if present
-        text = re.sub(r"^Description:\s*", "", text, flags=re.IGNORECASE)
-
-        return text.strip()
-
-    def _extract_specifications(self, soup: BeautifulSoup) -> str:
-        """
-        Extract product specifications.
-
-        Specifications are in a paragraph following <strong>Specifications:</strong>
-
-        Args:
-            soup: BeautifulSoup object
-
-        Returns:
-            Specifications text or empty string
-        """
-        # Find the <strong>Specifications:</strong> tag
-        specs_label = soup.find("strong", string=re.compile(r"Specifications:", re.IGNORECASE))
-        if not specs_label:
-            return ""
-
-        # Find the parent element and get the next <p> tag
-        parent = specs_label.find_parent()
-        if not parent:
-            return ""
-
-        # Look for the next <p> tag after the specs label
-        specs_p = parent.find("p")
-        if specs_p:
-            text = specs_p.get_text(separator="\n", strip=True)
-            return text.strip()
-
-        # Fallback: get all text after specs label
-        text = parent.get_text(separator="\n", strip=True)
-        text = re.sub(r"^Specifications:\s*", "", text, flags=re.IGNORECASE)
-
-        return text.strip()
-
-    def _extract_title(self, soup: BeautifulSoup) -> str:
-        """
-        Extract product title from page.
-
-        Args:
-            soup: BeautifulSoup object
-
-        Returns:
-            Product title or empty string
-        """
-        # Look for the page title
-        title_tag = soup.find("h1", class_="page-title")
-        if title_tag:
-            strong_tag = title_tag.find("strong")
-            if strong_tag:
-                return strong_tag.get_text(strip=True)
-
-        # Fallback: use meta title or h1
-        title_tag = soup.find("title")
-        if title_tag:
-            return title_tag.get_text(strip=True)
-
-        h1 = soup.find("h1")
-        if h1:
-            return h1.get_text(strip=True)
-
-        return ""
-
-    def _extract_collection(self, soup: BeautifulSoup) -> str:
-        """
-        Extract collection name (e.g., "Sherwood Collection").
-
-        Args:
-            soup: BeautifulSoup object
-
-        Returns:
-            Collection name or empty string
-        """
-        # Look for the collection name in h4 tag
-        # Pattern: <h4><span style="text-transform: uppercase;">Sherwood Collection</span></h4>
-        h4 = soup.find("h4")
-        if h4:
-            span = h4.find("span")
-            if span:
-                return span.get_text(strip=True)
-
-        return ""
-
-    def _extract_colors(self, soup: BeautifulSoup) -> List[str]:
-        """
-        Extract available colors for this product.
-
-        Colors are displayed as swatches with names in the "Color Selection" section.
-
-        Args:
-            soup: BeautifulSoup object
-
-        Returns:
-            List of color names
-        """
-        colors = []
-
-        # Find the "Color Selection:" section
-        color_section_label = soup.find("strong", string=re.compile(r"Color Selection:", re.IGNORECASE))
-        if not color_section_label:
-            return colors
-
-        # Find the parent row containing all color swatches
-        parent_row = color_section_label.find_parent("div", class_="row")
-        if not parent_row:
-            return colors
-
-        # Find the row containing color swatches
-        swatches_row = parent_row.find_next_sibling("div", class_="row")
-        if not swatches_row:
-            return colors
-
-        # Extract color names from each swatch
-        for col in swatches_row.find_all("div", class_=re.compile(r"col-")):
-            # Color name is in a <span class="small"> tag
-            color_span = col.find("span", class_="small")
-            if color_span:
-                color_name = color_span.get_text(strip=True)
-                if color_name:
-                    colors.append(color_name)
-
-        return colors
+        return result
 
     def _normalize_image_url(self, url: str) -> str:
         """
