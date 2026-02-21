@@ -8,6 +8,7 @@ Implements requirements from IMAGE_HANDLING_REQUIREMENTS.md including:
 - Alt tag generation for Shopify variant filtering
 """
 
+import logging
 import requests
 from urllib.parse import urlparse, urlunparse
 from typing import List, Dict, Any, Optional
@@ -48,21 +49,50 @@ def verify_image_url(url: str, timeout: int = 10) -> bool:
         timeout: Request timeout in seconds
 
     Returns:
-        True if URL returns 200 OK, False otherwise
+        True if URL returns 200 with image Content-Type and non-HTML body, False otherwise
     """
     if not url:
         return False
 
     try:
         response = requests.head(url, timeout=timeout, allow_redirects=True)
-        return response.status_code == 200
-    except:
-        # Try GET request as fallback (some servers don't support HEAD)
-        try:
-            response = requests.get(url, timeout=timeout, stream=True)
-            return response.status_code == 200
-        except:
+        if response.status_code != 200:
+            logging.debug("Image URL rejected (HEAD status %d): %s", response.status_code, url)
             return False
+        content_type = response.headers.get("Content-Type", "")
+        if content_type and not content_type.startswith("image/"):
+            logging.debug("Image URL rejected (HEAD Content-Type '%s'): %s", content_type, url)
+            return False
+        # Empty/missing Content-Type — fall through to GET for body inspection
+        if not content_type:
+            return _verify_image_url_get(url, timeout)
+        return True
+    except requests.exceptions.RequestException as e:
+        logging.debug("Image URL HEAD failed (%s), trying GET: %s", e, url)
+        return _verify_image_url_get(url, timeout)
+
+
+def _verify_image_url_get(url: str, timeout: int = 10) -> bool:
+    """GET fallback for image verification with HTML body inspection."""
+    try:
+        response = requests.get(url, timeout=timeout, stream=True)
+        if response.status_code != 200:
+            logging.debug("Image URL rejected (GET status %d): %s", response.status_code, url)
+            return False
+        content_type = response.headers.get("Content-Type", "")
+        if content_type and not content_type.startswith("image/"):
+            logging.debug("Image URL rejected (GET Content-Type '%s'): %s", content_type, url)
+            return False
+        # Inspect first bytes for HTML content (catches soft-404s)
+        chunk = next(response.iter_content(chunk_size=32), b"")
+        content_start = chunk.lstrip().lower()
+        if content_start.startswith((b"<!doctype", b"<html", b"<?xml")):
+            logging.debug("Image URL rejected (HTML body detected): %s", url)
+            return False
+        return True
+    except requests.exceptions.RequestException as e:
+        logging.debug("Image URL GET failed (%s): %s", e, url)
+        return False
 
 
 def deduplicate_images(images: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -171,4 +201,5 @@ def clean_and_verify_image_url(url: str, timeout: int = 10) -> Optional[str]:
     if verify_image_url(url, timeout):
         return url
 
+    logging.debug("Image URL failed all validation: %s", url)
     return None
