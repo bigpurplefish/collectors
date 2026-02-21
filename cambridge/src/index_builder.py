@@ -161,13 +161,17 @@ class CambridgeIndexBuilder:
         # Find all links with prodid parameter
         for link in soup.find_all("a", href=True):
             href = link["href"]
-            if "pavers-details?prodid=" in href or "prodid=" in href:
+            if "prodid=" in href:
                 # Extract prodid
                 try:
                     prodid_str = href.split("prodid=")[1].split("&")[0]
                     prodid = int(prodid_str)
                 except (IndexError, ValueError):
                     continue
+
+                # Preserve the actual detail page path from the href
+                # (e.g., /pavers-details, /walls-details)
+                detail_path = href.split("?")[0] if "?" in href else "/pavers-details"
 
                 # Extract product title from the link's parent structure
                 # The title is typically in a specific pattern on Cambridge pages
@@ -215,7 +219,7 @@ class CambridgeIndexBuilder:
                     products.append({
                         "prodid": prodid,
                         "title": title,
-                        "url": f"/pavers-details?prodid={prodid}",
+                        "url": f"{detail_path}?prodid={prodid}",
                         "category": self._extract_category_from_page(soup)
                     })
 

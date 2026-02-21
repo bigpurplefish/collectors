@@ -372,8 +372,8 @@ Configuration is stored in `config.json` (auto-generated on first run).
 ```json
 {
   "processing_mode": "skip",     // "skip" or "overwrite"
-  "start_record": "",            // Leave blank to start from beginning
-  "end_record": "",              // Leave blank to process all
+  "start_product": "",           // Leave blank to start from first product
+  "end_product": "",             // Leave blank to process all products
   "rebuild_index": false,        // Force rebuild product index
   "index_max_age_days": 7        // Auto-rebuild if older than 7 days
 }

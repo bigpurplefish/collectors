@@ -329,7 +329,7 @@ def build_gui():
     label_frame = tb.Frame(container)
     label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
 
-    tb.Label(label_frame, text="Start Record", anchor="w").pack(side="left")
+    tb.Label(label_frame, text="Start Product", anchor="w").pack(side="left")
     help_icon = tb.Label(
         label_frame,
         text=" ⓘ ",
@@ -340,12 +340,12 @@ def build_gui():
     help_icon.pack(side="left")
     ToolTip(
         help_icon,
-        text="Specify the first record to process (1-based index).\n\nLeave blank to start from the beginning.\nExample: Enter '10' to start from the 10th record.\n\nTip: Blank = process from start.",
+        text="Specify the first product family to process (1-based index).\n\nProducts are numbered after grouping by title.\nLeave blank to start from the first product.\nExample: Enter '32' to start from the 32nd product.\n\nTip: Blank = process from start.",
         bootstyle="info"
     )
     tb.Label(label_frame, text=":", anchor="w").pack(side="left")
 
-    start_var = tb.StringVar(value=cfg.get("start_record", ""))
+    start_var = tb.StringVar(value=cfg.get("start_product", ""))
     tb.Spinbox(
         container,
         textvariable=start_var,
@@ -360,10 +360,10 @@ def build_gui():
             val = start_var.get().strip()
             if val:
                 int(val)
-            cfg["start_record"] = val
+            cfg["start_product"] = val
             save_config(cfg)
         except (ValueError, tk.TclError, Exception):
-            cfg["start_record"] = ""
+            cfg["start_product"] = ""
             save_config(cfg)
 
     start_var.trace_add("write", on_start_change)
@@ -373,7 +373,7 @@ def build_gui():
     label_frame = tb.Frame(container)
     label_frame.grid(row=current_row, column=0, sticky="w", padx=5, pady=5)
 
-    tb.Label(label_frame, text="End Record", anchor="w").pack(side="left")
+    tb.Label(label_frame, text="End Product", anchor="w").pack(side="left")
     help_icon = tb.Label(
         label_frame,
         text=" ⓘ ",
@@ -384,12 +384,12 @@ def build_gui():
     help_icon.pack(side="left")
     ToolTip(
         help_icon,
-        text="Specify the last record to process (1-based index).\n\nLeave blank to process until the end.\nExample: Enter '50' to stop processing after the 50th record.\n\nTip: Blank = process to end.",
+        text="Specify the last product family to process (1-based index).\n\nProducts are numbered after grouping by title.\nLeave blank to process all remaining products.\nExample: Enter '33' to stop after the 33rd product.\n\nTip: Blank = process to end.",
         bootstyle="info"
     )
     tb.Label(label_frame, text=":", anchor="w").pack(side="left")
 
-    end_var = tb.StringVar(value=cfg.get("end_record", ""))
+    end_var = tb.StringVar(value=cfg.get("end_product", ""))
     tb.Spinbox(
         container,
         textvariable=end_var,
@@ -404,10 +404,10 @@ def build_gui():
             val = end_var.get().strip()
             if val:
                 int(val)
-            cfg["end_record"] = val
+            cfg["end_product"] = val
             save_config(cfg)
         except (ValueError, tk.TclError, Exception):
-            cfg["end_record"] = ""
+            cfg["end_product"] = ""
             save_config(cfg)
 
     end_var.trace_add("write", on_end_change)

@@ -108,8 +108,8 @@ class CambridgeProductGenerator:
             "options": self._generate_options(variant_records, portal_data_by_color),
             "metafields": self._generate_metafields(public_data),
             # Large arrays at bottom for easier human scanning
-            "variants": self._generate_variants(variant_records, portal_data_by_color, title),
-            "images": self._generate_images(public_data, portal_data_by_color, title, variant_records),
+            "variants": self._generate_variants(variant_records, portal_data_by_color, title, public_data),
+            "images": self._generate_images(public_data, portal_data_by_color, title, variant_records, log=log),
         }
 
         return product
@@ -224,7 +224,8 @@ class CambridgeProductGenerator:
         self,
         variant_records: List[Dict[str, Any]],
         portal_data_by_color: Dict[str, Dict[str, Any]],
-        product_title: str
+        product_title: str,
+        public_data: Dict[str, Any] = None
     ) -> List[Dict[str, Any]]:
         """
         Generate Shopify variants from variant records.
@@ -237,6 +238,7 @@ class CambridgeProductGenerator:
             variant_records: List of variant records (one per color)
             portal_data_by_color: Portal data indexed by color
             product_title: Product title for logging
+            public_data: Data from public website (for swatch images)
 
         Returns:
             List of variant dictionaries
@@ -251,7 +253,13 @@ class CambridgeProductGenerator:
             portal_data = portal_data_by_color.get(color, {})
 
             # Extract common data
-            base_item_number = str(record.get("item_#", ""))
+            raw_item = record.get("item_#", "")
+            if isinstance(raw_item, float) and math.isnan(raw_item):
+                base_item_number = ""
+            elif isinstance(raw_item, float) and raw_item == int(raw_item):
+                base_item_number = str(int(raw_item))
+            else:
+                base_item_number = str(raw_item)
             model_number = portal_data.get("model_number", "")
             gallery_images = portal_data.get("gallery_images", [])
 
@@ -327,15 +335,15 @@ class CambridgeProductGenerator:
                 weight_value = 0
                 grams = 0
 
-            # Generate SKU
-            sku = self.sku_generator.generate_unique_sku()
+            # Generate SKU from item_# with variant suffix (e.g., "7676-01", "7676-02")
+            suffixed_item = f"{base_item_number}-{variant_position:02d}" if base_item_number else self.sku_generator.generate_unique_sku()
 
             # Build variant with option keys grouped
             variant = {
-                "sku": sku,
+                "sku": suffixed_item,
                 "price": str(unit_config["price"]),
                 "cost": str(unit_config["cost"]),
-                "barcode": base_item_number,
+                "barcode": suffixed_item,
                 "inventory_quantity": self.config.get("inventory_quantity", 5),
                 "position": variant_position,
                 "option1": color,
@@ -353,12 +361,19 @@ class CambridgeProductGenerator:
                 "metafields": []
             }
 
-            # Add color_swatch_image metafield (first portal gallery image)
-            if gallery_images:
+            # Add color_swatch_image metafield
+            # Priority: public site swatch image > first portal gallery image
+            color_swatches = (public_data or {}).get("color_swatches", {})
+            swatch_url = next(
+                (url for name, url in color_swatches.items() if name.lower() == color.lower()),
+                None
+            )
+            swatch_value = swatch_url or (gallery_images[0] if gallery_images else None)
+            if swatch_value:
                 variant["metafields"].append({
                     "namespace": "custom",
                     "key": "color_swatch_image",
-                    "value": gallery_images[0],
+                    "value": swatch_value,
                     "type": "single_line_text_field"
                 })
 
@@ -411,7 +426,8 @@ class CambridgeProductGenerator:
         public_data: Dict[str, Any],
         portal_data_by_color: Dict[str, Dict[str, Any]],
         product_title: str,
-        variant_records: List[Dict[str, Any]]
+        variant_records: List[Dict[str, Any]],
+        log: Callable = print
     ) -> List[Dict[str, Any]]:
         """
         Generate images array with proper ordering and alt tags.
@@ -478,6 +494,32 @@ class CambridgeProductGenerator:
         unique_images = []
         seen_urls = set()  # Track lowercase URLs to detect duplicates
 
+        # Validation counters: [attempted, verified] per phase
+        val_counts = {"swatch": [0, 0], "portal": [0, 0], "hero": [0, 0], "lifestyle": [0, 0]}
+
+        # Phase 0: Collect swatch images from public site (one per color)
+        color_swatches = public_data.get("color_swatches", {})
+        for color in portal_data_by_color:
+            # Case-insensitive lookup
+            swatch_url = next(
+                (url for name, url in color_swatches.items() if name.lower() == color.lower()),
+                None
+            )
+            if swatch_url:
+                val_counts["swatch"][0] += 1
+                cleaned_url = clean_and_verify_image_url(swatch_url, timeout=10)
+                if cleaned_url:
+                    val_counts["swatch"][1] += 1
+                    url_lower = cleaned_url.lower()
+                    if url_lower not in seen_urls:
+                        seen_urls.add(url_lower)
+                        unique_images.append({
+                            "url": cleaned_url,
+                            "type": "swatch",
+                            "color": color,
+                            "counter": 0
+                        })
+
         # Phase 1: Collect portal images (all colors)
         # Deduplicate within each color only (not across colors)
         portal_img_counter = {}
@@ -491,8 +533,10 @@ class CambridgeProductGenerator:
             color_seen_urls = set()
 
             for img_url in gallery_images:
+                val_counts["portal"][0] += 1
                 cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
                 if cleaned_url:
+                    val_counts["portal"][1] += 1
                     url_lower = cleaned_url.lower()
                     # Only deduplicate within same color
                     if url_lower not in color_seen_urls:
@@ -509,8 +553,10 @@ class CambridgeProductGenerator:
         # Phase 2: Collect hero image from public site
         hero_image = public_data.get("hero_image", "")
         if hero_image:
+            val_counts["hero"][0] += 1
             cleaned_url = clean_and_verify_image_url(hero_image, timeout=10)
             if cleaned_url:
+                val_counts["hero"][1] += 1
                 url_lower = cleaned_url.lower()
                 if url_lower not in seen_urls:
                     seen_urls.add(url_lower)
@@ -525,8 +571,10 @@ class CambridgeProductGenerator:
         gallery_images = public_data.get("gallery_images", [])
         lifestyle_counter = 0
         for img_url in gallery_images:
+            val_counts["lifestyle"][0] += 1
             cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
             if cleaned_url:
+                val_counts["lifestyle"][1] += 1
                 url_lower = cleaned_url.lower()
                 if url_lower not in seen_urls:
                     seen_urls.add(url_lower)
@@ -537,6 +585,16 @@ class CambridgeProductGenerator:
                         "color": first_color,
                         "counter": lifestyle_counter
                     })
+
+        # Log validation summary if any images were rejected
+        total_attempted = sum(c[0] for c in val_counts.values())
+        total_verified = sum(c[1] for c in val_counts.values())
+        if total_attempted > total_verified:
+            rejected_phases = []
+            for phase, (attempted, verified) in val_counts.items():
+                if attempted > verified:
+                    rejected_phases.append(f"{phase}: {attempted - verified}/{attempted} rejected")
+            log(f"  \u26a0 [{product_title}] Image validation: {total_verified}/{total_attempted} passed ({', '.join(rejected_phases)})")
 
         # Step 2: Create variant entries grouped by variant (easier for human review)
         # Group all images for each variant (color + unit) together in gallery order
@@ -568,13 +626,15 @@ class CambridgeProductGenerator:
                     img_color = img_info["color"]
                     counter = img_info["counter"]
 
-                    # Only include portal images that match this color
+                    # Only include swatch/portal images that match this color
                     # Public images (hero/lifestyle) are shown for all variants
-                    if img_type == "portal" and img_color != color:
+                    if img_type in ("portal", "swatch") and img_color != color:
                         continue
 
                     # Generate base alt tag based on image type
-                    if img_type == "portal":
+                    if img_type == "swatch":
+                        alt_base = f"{product_title} - Color Swatch"
+                    elif img_type == "portal":
                         alt_base = f"{product_title} - Product Image {counter}"
                     elif img_type == "hero":
                         alt_base = generate_lifestyle_alt_tag(product_title, "Hero")

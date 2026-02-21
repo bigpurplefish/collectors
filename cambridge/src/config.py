@@ -32,8 +32,8 @@ DEFAULT_CONFIG = {
 
     "_PROCESSING_SETTINGS": "# Processing Options",
     "processing_mode": "skip",  # skip or overwrite
-    "start_record": "",  # blank = start from beginning
-    "end_record": "",    # blank = process to end
+    "start_product": "",  # blank = start from first product
+    "end_product": "",    # blank = process to last product
     "inventory_quantity": 5,  # Default inventory quantity for all products
     "rebuild_index": False,  # Force rebuild product index
     "skip_accessories_category": True,  # Skip /accessories category when building portal index
