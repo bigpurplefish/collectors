@@ -5,13 +5,14 @@ Builds a searchable index of products from the dealer portal (shop.cambridgepave
 
 Two-stage authenticated approach:
 1. Uses navigation API to get category URLs (no auth required)
-2. Uses authenticated search API to get individual product variants with SKUs, prices, stock, images
+2. Navigates to each category page with Playwright and scrapes product cards from the rendered DOM
 
 The portal uses SEO-friendly URLs like:
 /pavers/sherwood/driftwood_6
 """
 
 import requests
+import re
 import time
 import sys
 import os
@@ -57,9 +58,6 @@ class CambridgePortalIndexBuilder:
             "&max_level=6&menu_fields=internalid,name,sequencenumber,displayinsite"
             "&n=2&pcv_all_items=undefined&site_id=2&use_pcv=T"
         )
-
-        # Search API endpoint (requires auth)
-        self.search_api_url = f"{self.portal_origin}/scs/searchApi.ssp"
 
         # Browser state
         self._browser: Optional[Browser] = None
@@ -155,10 +153,10 @@ class CambridgePortalIndexBuilder:
         log: Callable = print
     ) -> Dict[str, Any]:
         """
-        Build product index using two-stage authenticated approach.
+        Build product index using two-stage approach.
 
         Stage 1: Navigation API - Get category URLs (no auth)
-        Stage 2: Search API - Get individual product variants (requires auth)
+        Stage 2: Playwright PLP scraping - Navigate to each category and extract product cards
 
         Args:
             log: Logging function
@@ -168,15 +166,15 @@ class CambridgePortalIndexBuilder:
             - last_updated: ISO timestamp
             - total_products: Count of individual products
             - products: List of product dictionaries with:
-                - title: Product name with color family prefix (e.g., "Sherwood Ledgestone 3-Pc. Design Kit")
-                - url: Product URL
+                - title: Product name (e.g., "Sherwood Ledgestone 3-Pc. Design Kit Bluestone Blend")
+                - url: Product URL (e.g., "/Bluestone-Blend")
                 - category: Category URL
                 - sku: Product SKU
                 - price: Product price
                 - stock: Stock quantity
                 - images: List of image URLs
         """
-        log_section_header(log, "BUILDING PORTAL PRODUCT INDEX (TWO-STAGE AUTHENTICATED)")
+        log_section_header(log, "BUILDING PORTAL PRODUCT INDEX (NAV API + PLP SCRAPING)")
         log_and_status(log, f"Portal: {self.portal_origin}", ui_msg=f"Portal: {self.portal_origin}")
 
         all_products = []
@@ -202,19 +200,18 @@ class CambridgePortalIndexBuilder:
                 log_warning(log, "No data field in API response")
                 category_urls = []
 
-            # Stage 2: Login and get product variants from search API
+            # Stage 2: Login and scrape product cards from category pages
             log_and_status(
                 log,
-                "Stage 2: Logging in and fetching product variants from search API...",
-                ui_msg="Stage 2: Fetching products"
+                "Stage 2: Logging in and scraping product cards from category pages...",
+                ui_msg="Stage 2: Scraping products"
             )
 
             if not self.login(log):
-                log_error(log, "Failed to login - cannot fetch product details")
+                log_error(log, "Failed to login - cannot scrape product pages")
                 return self._create_index(all_products)
 
-            # Fetch products from each category with early bail-out
-            # Try a small sample first; if all fail, skip remaining and use cache
+            # Scrape products from each category with early bail-out
             PROBE_COUNT = 5
             probe_failures = 0
 
@@ -229,7 +226,7 @@ class CambridgePortalIndexBuilder:
 
                 is_probing = i <= PROBE_COUNT and len(all_products) == 0
                 try:
-                    products = self._fetch_products_from_category(category_url, log, probe=is_probing)
+                    products = self._scrape_products_from_category(category_url, log, probe=is_probing)
                     all_products.extend(products)
                     if products:
                         log_success(log, f"Found {len(products)} products from {category_url}")
@@ -237,16 +234,16 @@ class CambridgePortalIndexBuilder:
                         if is_probing:
                             probe_failures += 1
                 except Exception as e:
-                    log_warning(log, f"Error fetching products from {category_url}", details=str(e))
+                    log_warning(log, f"Error scraping products from {category_url}", details=str(e))
                     if is_probing:
                         probe_failures += 1
                     continue
 
-                # Early bail-out: if first N categories all returned 0 products, API is likely blocked
+                # Early bail-out: if first N categories all returned 0 products, page loads likely blocked
                 if i == PROBE_COUNT and probe_failures == PROBE_COUNT and len(all_products) == 0:
                     log_warning(
                         log,
-                        f"First {PROBE_COUNT} categories all failed - API likely blocked by bot detection",
+                        f"First {PROBE_COUNT} categories all failed - pages likely blocked by bot detection",
                         details=f"Skipping remaining {len(category_urls) - PROBE_COUNT} categories"
                     )
                     break
@@ -289,7 +286,7 @@ class CambridgePortalIndexBuilder:
         """
         Recursively extract category URLs from navigation tree.
 
-        Category pages contain product grids that we'll query via search API.
+        Category pages contain product grids that we'll scrape via Playwright.
 
         Args:
             categories: List of category dictionaries from API
@@ -330,157 +327,165 @@ class CambridgePortalIndexBuilder:
 
         return category_urls
 
-    def _fetch_products_from_category(
+    def _scrape_products_from_category(
         self,
         category_url: str,
         log: Callable,
         probe: bool = False
     ) -> List[Dict[str, Any]]:
         """
-        Fetch individual product variants from a category using authenticated search API.
+        Scrape product cards from a category page using Playwright.
+
+        Navigates to the category PLP, waits for SuiteCommerce SPA to render,
+        loads all products via pagination, then extracts data from DOM.
 
         Args:
             category_url: Category URL (e.g., "/pavers/sherwood/sherwood-ledgestone-3-pc-design-kit")
             log: Logging function
+            probe: If True, use shorter timeouts for fast failure detection
 
         Returns:
-            List of product dictionaries with title (including color family prefix),
-            url, category, sku, price, stock, images
+            List of product dictionaries
         """
         if not self._logged_in or not self._page:
             log_warning(log, "Not logged in, skipping category", details=f"Category: {category_url}")
             return []
 
-        # Build search API URL with parameters
-        search_url = (
-            f"{self.search_api_url}"
-            f"?c=827395&country=US&currency=USD&language=en"
-            f"&limit=100&n=2&offset=0&pricelevel=5&site_id=2"
-            f"&sort=relevance:desc&commercecategoryurl={category_url}"
-            f"&use_pcv=T&include=facets&fieldset=search"
-        )
-
         try:
-            # Rate limiting: delay between requests to avoid triggering bot detection
-            time.sleep(1.5)
+            # Rate limiting: delay between page navigations
+            time.sleep(2.5)
 
-            # Probe mode uses shorter timeout and single attempt for fast detection
-            request_timeout = 10000 if probe else 60000
-            max_retries = 1 if probe else 3
-            response = None
-            for attempt in range(max_retries):
-                try:
-                    # Use Playwright to fetch search API (authenticated) with increased timeout
-                    response = self._page.request.get(search_url, timeout=request_timeout)
-                    if response.ok:
-                        break
-                except PlaywrightTimeoutError:
-                    if attempt < max_retries - 1:
-                        delay = 2 ** attempt  # 1s, 2s, 4s exponential backoff
-                        log_warning(
-                            log,
-                            f"Timeout - retry {attempt + 1}/{max_retries} after {delay}s",
-                            details=f"Category: {category_url}"
-                        )
-                        time.sleep(delay)
-                    else:
-                        log_warning(
-                            log,
-                            f"Failed after {max_retries} retries",
-                            details=f"Category: {category_url}"
-                        )
-                        return []  # Return empty for this category, continue with others
+            nav_timeout = 15000 if probe else 30000
+            self._page.goto(
+                f"{self.portal_origin}{category_url}",
+                wait_until="networkidle",
+                timeout=nav_timeout
+            )
+            # Wait for SuiteCommerce SPA rendering
+            time.sleep(3)
 
-            if response is None or response.status != 200:
-                status = response.status if response else "no response"
-                log_warning(
-                    log,
-                    f"Search API returned status {status}",
-                    details=f"Category: {category_url}"
-                )
-                return []
+            # Load all products on the page (handle pagination)
+            self._load_all_products_on_page(log)
 
-            data = response.json()
+            # Extract product data from rendered cards
+            return self._extract_product_cards(category_url, log)
 
-            # Extract products from search results
-            products = []
-            items = data.get("items", [])
-
-            for item in items:
-                # Extract product data
-                display_name = item.get("displayname", "")
-                url_component = item.get("urlcomponent", "")
-                item_id = item.get("itemid", "")
-                internal_id = item.get("internalid", "")
-                price = item.get("onlinecustomerprice", "")
-                stock = item.get("quantityavailable", 0)
-
-                # Extract images
-                images = []
-                image_detail = item.get("itemimages_detail", {})
-                if image_detail:
-                    urls = image_detail.get("urls", [])
-                    for img in urls:
-                        if isinstance(img, dict):
-                            img_url = img.get("url", "")
-                            if img_url:
-                                images.append(img_url)
-
-                # Build full product URL
-                # Portal URLs use just the LAST component of urlcomponent, not the full path
-                # API returns: /accessories/alliance-cleaners/.../Alliance-Gator-Clean-Sealer-Stripper-1-Gal.
-                # We need: /Alliance-Gator-Clean-Sealer-Stripper-1-Gal.
-                # Example: /Sherwood-Ledgestone-3-Pc.-Design-Kit-Onyx-Natural
-                #
-                # Fallback: If urlcomponent is empty, use /product/{internalid} format
-                # Example: /product/21263 (for Edgestone Plus products)
-                if url_component:
-                    # Extract last component (split by / and take last part)
-                    last_component = url_component.strip("/").split("/")[-1]
-                    product_url = f"/{last_component}"
-                elif internal_id:
-                    # Use internalid as fallback
-                    product_url = f"/product/{internal_id}"
-                else:
-                    # Last resort: use category URL (will fail scraping but better than crashing)
-                    product_url = category_url
-
-                # Extract color family from category URL and prepend to title if not already present
-                # Category URL format: /pavers/sherwood/...
-                # We want to extract "Sherwood" and prepend it to the displayname IF IT'S NOT ALREADY THERE
-                color_family = ""
-                category_parts = category_url.strip("/").split("/")
-                if len(category_parts) >= 2:
-                    # category_parts[0] is "pavers" or "walls"
-                    # category_parts[1] is the color family (e.g., "sherwood", "crusader")
-                    color_family = category_parts[1].replace("-", " ").title()
-
-                # Build full title with color family prefix (only if not already in displayname)
-                if color_family and not display_name.lower().startswith(color_family.lower()):
-                    full_title = f"{color_family} {display_name}"
-                else:
-                    full_title = display_name
-
-                products.append({
-                    "title": full_title,
-                    "url": product_url,
-                    "category": category_url,
-                    "sku": item_id,
-                    "price": str(price) if price else "",
-                    "stock": int(stock) if stock else 0,
-                    "images": images
-                })
-
-            return products
-
+        except PlaywrightTimeoutError:
+            log_warning(log, f"Page load timeout for {category_url}")
+            return []
         except Exception as e:
-            # Log error but don't fail the entire build
             log_warning(
                 log,
-                f"Error fetching products from {category_url}",
+                f"Error scraping products from {category_url}",
                 details=str(e)
             )
             return []
+
+    def _load_all_products_on_page(self, log: Callable):
+        """
+        Handle SuiteCommerce infinite scroll pagination.
+
+        Clicks the "Show More" / infinite scroll button repeatedly until all
+        products are loaded. Safety cap at 10 clicks.
+        """
+        MAX_PAGINATION_CLICKS = 10
+
+        for click_num in range(MAX_PAGINATION_CLICKS):
+            # SuiteCommerce uses an infinite scroll button
+            show_more = self._page.locator(
+                ".global-views-pagination a, "
+                "button:has-text('Show More'), "
+                "a:has-text('Show More'), "
+                "[data-action='pushable'] .infinite-scroll-load-more"
+            )
+
+            if show_more.count() == 0:
+                break
+
+            # Check if the button is actually visible/clickable
+            try:
+                first_visible = None
+                for idx in range(show_more.count()):
+                    if show_more.nth(idx).is_visible():
+                        first_visible = show_more.nth(idx)
+                        break
+
+                if first_visible is None:
+                    break
+
+                first_visible.click(timeout=5000)
+                # Wait for new items to load
+                self._page.wait_for_load_state("networkidle", timeout=10000)
+                time.sleep(1)
+            except Exception:
+                break
+
+    def _extract_product_cards(
+        self,
+        category_url: str,
+        log: Callable
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract product data from all rendered product cards on the page.
+
+        Uses SuiteCommerce DOM selectors discovered via recon:
+        - Card: .facets-item-cell-grid with data-item-id, data-sku
+        - Title: .facets-item-cell-grid-title a span[itemprop="name"]
+        - URL: .facets-item-cell-grid-title href
+        - Price: [data-rate] on .product-views-price-lead
+        - Image: .facets-item-cell-grid-image src
+
+        Args:
+            category_url: The category URL for metadata
+            log: Logging function
+
+        Returns:
+            List of product dictionaries
+        """
+        card_data = self._page.evaluate("""(categoryUrl) => {
+            const cards = document.querySelectorAll('.facets-item-cell-grid');
+            return Array.from(cards).map(card => {
+                // Title from the title link's span or link text
+                const titleLink = card.querySelector('.facets-item-cell-grid-title');
+                const titleSpan = card.querySelector('.facets-item-cell-grid-title span[itemprop="name"]');
+                const title = titleSpan
+                    ? titleSpan.textContent.trim()
+                    : (titleLink ? titleLink.textContent.trim() : '');
+
+                // URL from the title link href
+                const url = titleLink ? titleLink.getAttribute('href') : '';
+
+                // SKU from data-sku attribute on card
+                const sku = card.getAttribute('data-sku') || '';
+
+                // Price from data-rate attribute
+                const priceEl = card.querySelector('[data-rate]');
+                const price = priceEl ? priceEl.getAttribute('data-rate') : '';
+
+                // Image URL
+                const img = card.querySelector('.facets-item-cell-grid-image');
+                const imgSrc = img ? img.getAttribute('src') : '';
+
+                // Stock from text content (parse "Qty Available: N")
+                const allText = card.textContent || '';
+                const stockMatch = allText.match(/Qty Available:\\s*(\\d+)/);
+                const stock = stockMatch ? parseInt(stockMatch[1]) : 0;
+
+                return {
+                    title: title,
+                    url: url,
+                    category: categoryUrl,
+                    sku: sku,
+                    price: price,
+                    stock: stock,
+                    images: imgSrc ? [imgSrc] : []
+                };
+            });
+        }""", category_url)
+
+        # Filter out cards with no title (e.g., mini-cart items picked up by mistake)
+        products = [p for p in card_data if p.get("title")]
+        return products
 
     def _create_index(self, products: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

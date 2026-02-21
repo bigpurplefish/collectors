@@ -4,14 +4,15 @@ Script to rebuild the Cambridge dealer portal product index.
 
 This script uses the authenticated two-stage approach to:
 1. Fetch category URLs from the navigation API
-2. Fetch product details from the search API (authenticated)
+2. Navigate to each category page with Playwright and scrape product cards
 """
 
 import sys
 import os
 from pathlib import Path
 
-# Add src to path
+# Add project root and src to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from config import load_config, save_config

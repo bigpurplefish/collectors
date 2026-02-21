@@ -227,8 +227,8 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
     input_file = config.get("input_file", "")
     output_file = config.get("output_file", "")
     processing_mode = config.get("processing_mode", "skip")
-    start_record = config.get("start_record", "")
-    end_record = config.get("end_record", "")
+    start_product = config.get("start_product", "")
+    end_product = config.get("end_product", "")
     force_rebuild_index = config.get("rebuild_index", False)
 
     # Validate inputs
@@ -251,7 +251,7 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
     # Initialize collector
     log_and_status(
         status_fn,
-        msg=f"Initializing Cambridge collector (processing_mode={processing_mode}, start={start_record or 'beginning'}, end={end_record or 'end'})",
+        msg=f"Initializing Cambridge collector (processing_mode={processing_mode}, start_product={start_product or 'first'}, end_product={end_product or 'last'})",
         ui_msg="Initializing collector..."
     )
     collector = CambridgeCollector(config)
@@ -282,32 +282,6 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
         log_and_status(status_fn, "", ui_msg="")
         records = load_input_file(input_file, status_fn)
 
-        # Apply record range filtering
-        start_idx = 0
-        end_idx = None
-
-        if start_record:
-            try:
-                start_idx = int(start_record) - 1
-                if start_idx < 0:
-                    start_idx = 0
-            except (ValueError, TypeError):
-                start_idx = 0
-
-        if end_record:
-            try:
-                end_idx = int(end_record)
-            except (ValueError, TypeError):
-                end_idx = None
-
-        records = records[start_idx:end_idx]
-
-        log_and_status(
-            status_fn,
-            msg=f"Processing {len(records)} records (from record #{start_idx + 1}, mode={processing_mode})",
-            ui_msg=f"Processing {len(records)} records (from record #{start_idx + 1})"
-        )
-
         # Group records by title
         log_and_status(status_fn, "", ui_msg="")
         log_and_status(
@@ -316,6 +290,38 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
             ui_msg="Grouping records by title (variant families)..."
         )
         product_families = generator.group_by_title(records, status_fn)
+
+        # Apply product range filtering (1-based, after grouping)
+        total_products = len(product_families)
+        start_idx = 0
+        end_idx = total_products
+
+        if start_product:
+            try:
+                start_idx = max(0, int(start_product) - 1)
+            except (ValueError, TypeError):
+                start_idx = 0
+
+        if end_product:
+            try:
+                end_idx = min(total_products, int(end_product))
+            except (ValueError, TypeError):
+                end_idx = total_products
+
+        if start_idx > 0 or end_idx < total_products:
+            items = list(product_families.items())[start_idx:end_idx]
+            product_families = dict(items)
+            log_and_status(
+                status_fn,
+                msg=f"Product range filter: processing products {start_idx + 1}-{end_idx} of {total_products} ({len(product_families)} products)",
+                ui_msg=f"Filtered to products {start_idx + 1}-{end_idx} ({len(product_families)} products)"
+            )
+        else:
+            log_and_status(
+                status_fn,
+                msg=f"Processing all {total_products} product families (mode={processing_mode})",
+                ui_msg=f"Processing {total_products} product families"
+            )
 
         # Load existing output (for both skip and overwrite modes)
         # This allows incremental saving in both modes
@@ -451,6 +457,15 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 else:
                     public_title = str(public_title_raw).strip() if public_title_raw is not None else ""
 
+                # Handle portal_title_fallback (may be NaN from Excel)
+                fallback_raw = first_variant.get("portal_title_fallback", "")
+                if isinstance(fallback_raw, float) and math.isnan(fallback_raw):
+                    portal_title_fallback = ""
+                elif isinstance(fallback_raw, str):
+                    portal_title_fallback = fallback_raw.strip()
+                else:
+                    portal_title_fallback = str(fallback_raw).strip() if fallback_raw is not None else ""
+
                 # Find product URL using public_title (skip if empty)
                 product_url = ""
                 if public_title:
@@ -539,6 +554,15 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     # Search portal using "[portal_title] [color]" (exact match)
                     # The portal index has title field that contains "[portal_title] [color]"
                     portal_data = collector.collect_portal_data(portal_title, color, status_fn)
+
+                    # If primary title failed and fallback exists, retry with fallback
+                    if not portal_data and portal_title_fallback:
+                        log_and_status(
+                            status_fn,
+                            msg=f"  Retrying with fallback title: {portal_title_fallback}",
+                            ui_msg=f"  Retrying with fallback title"
+                        )
+                        portal_data = collector.collect_portal_data(portal_title_fallback, color, status_fn)
 
                     # Validate portal data
                     has_data, missing_portal_fields = DataValidator.validate_portal_data(portal_data)

@@ -2,7 +2,7 @@
 """
 Test Portal Index Builder
 
-Tests the portal product index builder using the navigation API.
+Tests the portal product index builder using navigation API + PLP scraping.
 """
 
 import os
@@ -17,10 +17,10 @@ from src.config import PORTAL_INDEX_CACHE_FILE, load_config
 
 
 def test_portal_index_builder():
-    """Test portal index builder with authenticated two-stage API."""
+    """Test portal index builder with authenticated PLP scraping."""
     print("")
     print("=" * 80)
-    print("TEST: Portal Index Builder (Two-Stage Authenticated API)")
+    print("TEST: Portal Index Builder (Nav API + PLP Scraping)")
     print("=" * 80)
     print("")
 
@@ -42,8 +42,8 @@ def test_portal_index_builder():
     builder = CambridgePortalIndexBuilder(config)
 
     # Build index
-    print("Building portal product index using two-stage authenticated API...")
-    print("(This will take several minutes as it queries search API for each category)")
+    print("Building portal product index using nav API + PLP scraping...")
+    print("(This will take several minutes as it navigates each category page)")
     print("")
     index = builder.build_index(print)
 
@@ -60,7 +60,7 @@ def test_portal_index_builder():
     assert len(products) == total, f"Product count mismatch: {len(products)} vs {total}"
     print(f"✓ Found {total} products")
 
-    # Validate products have required fields (including search API fields)
+    # Validate products have required fields
     for i, product in enumerate(products[:5]):  # Check first 5
         assert "title" in product, f"Product {i} missing 'title'"
         assert "url" in product, f"Product {i} missing 'url'"
@@ -70,10 +70,9 @@ def test_portal_index_builder():
         assert "stock" in product, f"Product {i} missing 'stock'"
         assert "images" in product, f"Product {i} missing 'images'"
 
-        # Validate URL format (includes urlcomponent)
+        # Validate URL format (PLP-scraped URLs are single-segment: /Product-Name_N or /product/ID)
         url = product["url"]
         assert url.startswith("/"), f"Product {i} URL should start with '/': {url}"
-        assert url.count("/") >= 3, f"Product {i} URL should have 3+ segments: {url}"
 
         # Validate images is a list
         assert isinstance(product["images"], list), f"Product {i} images should be a list"
@@ -81,11 +80,11 @@ def test_portal_index_builder():
     print(f"✓ All products have required fields (including SKU, price, stock, images)")
 
     # Check for Sherwood products (known category)
-    sherwood_products = [p for p in products if "/sherwood" in p.get("url", "")]
+    sherwood_products = [p for p in products if "sherwood" in p.get("category", "").lower()]
     assert len(sherwood_products) > 0, "Should find Sherwood products"
     print(f"✓ Found {len(sherwood_products)} Sherwood products")
 
-    # Display sample products with new fields
+    # Display sample products
     print("")
     print("Sample products:")
     for i, product in enumerate(products[:3], 1):
@@ -175,36 +174,39 @@ def test_cached_fallback():
     return True
 
 
-def test_retry_config():
-    """Test that retry configuration constants are correctly defined."""
+def test_scraping_config():
+    """Test that PLP scraping configuration is correctly defined."""
     print("")
     print("=" * 80)
-    print("TEST: Retry Configuration (Unit Test)")
+    print("TEST: PLP Scraping Configuration (Unit Test)")
     print("=" * 80)
     print("")
 
-    # Read the source file and verify retry logic is present
     import inspect
     from src.portal_index_builder import CambridgePortalIndexBuilder
 
-    source = inspect.getsource(CambridgePortalIndexBuilder._fetch_products_from_category)
+    # Verify scraping method exists and uses correct approach
+    source = inspect.getsource(CambridgePortalIndexBuilder._scrape_products_from_category)
 
-    # Verify key configuration values
-    assert "max_retries = 1 if probe else 3" in source, "max_retries should be 1 (probe) or 3 (normal)"
-    print("✓ max_retries = 1 (probe) / 3 (normal)")
+    assert "time.sleep(2.5)" in source, "rate limiting delay should be 2.5 seconds"
+    print("✓ rate limiting delay = 2.5 seconds")
 
-    assert "timeout=request_timeout" in source, "timeout should use request_timeout variable"
-    assert "10000 if probe else 60000" in source, "request_timeout should be 10s (probe) / 60s (normal)"
-    print("✓ timeout = 10s (probe) / 60s (normal)")
-
-    assert "time.sleep(1.5)" in source, "rate limiting delay should be 1.5 seconds"
-    print("✓ rate limiting delay = 1.5 seconds")
-
-    assert "2 ** attempt" in source, "exponential backoff formula should be 2 ** attempt"
-    print("✓ exponential backoff = 2 ** attempt (1s, 2s, 4s)")
+    assert "15000 if probe else 30000" in source, "nav_timeout should be 15s (probe) / 30s (normal)"
+    print("✓ timeout = 15s (probe) / 30s (normal)")
 
     assert "PlaywrightTimeoutError" in source, "should catch PlaywrightTimeoutError"
     print("✓ catches PlaywrightTimeoutError specifically")
+
+    # Verify DOM extraction method references correct selectors
+    extract_source = inspect.getsource(CambridgePortalIndexBuilder._extract_product_cards)
+    assert "facets-item-cell-grid" in extract_source, "should use .facets-item-cell-grid selector"
+    print("✓ uses .facets-item-cell-grid selector for product cards")
+
+    assert "data-rate" in extract_source, "should extract price from data-rate attribute"
+    print("✓ extracts price from data-rate attribute")
+
+    assert "data-sku" in extract_source, "should extract SKU from data-sku attribute"
+    print("✓ extracts SKU from data-sku attribute")
 
     # Verify early bail-out in build_index
     build_source = inspect.getsource(CambridgePortalIndexBuilder.build_index)
@@ -216,7 +218,7 @@ def test_retry_config():
 
     print("")
     print("=" * 80)
-    print("✓ TEST PASSED: Retry configuration is correct")
+    print("✓ TEST PASSED: PLP scraping configuration is correct")
     print("=" * 80)
     print("")
 
@@ -231,14 +233,14 @@ if __name__ == "__main__":
 
         # Run fast unit tests first
         test_cached_fallback()
-        test_retry_config()
+        test_scraping_config()
 
         print("")
-        print("NOTE: Full integration test uses authenticated APIs to fetch product data.")
+        print("NOTE: Full integration test navigates category pages with Playwright.")
         print("      It requires:")
         print("      - Internet connection")
         print("      - Portal credentials configured in config.json")
-        print("      - Several minutes to complete (queries 362 categories)")
+        print("      - 30-50 minutes to complete (navigates ~432 category pages)")
         print("")
 
         test_portal_index_builder()
@@ -248,7 +250,7 @@ if __name__ == "__main__":
         print("TEST SUMMARY")
         print("=" * 80)
         print("Cached Fallback: ✓ PASSED")
-        print("Retry Configuration: ✓ PASSED")
+        print("PLP Scraping Config: ✓ PASSED")
         print("Portal Index Builder: ✓ PASSED")
         print("=" * 80)
         print("")
