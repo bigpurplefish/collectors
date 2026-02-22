@@ -16,7 +16,6 @@ import re
 import time
 from typing import Dict, List, Any, Optional, Callable
 from playwright.sync_api import sync_playwright, Page, Browser, TimeoutError as PlaywrightTimeoutError
-from bs4 import BeautifulSoup
 
 
 class CambridgePortalParser:
@@ -39,6 +38,10 @@ class CambridgePortalParser:
         self._browser: Optional[Browser] = None
         self._page: Optional[Page] = None
         self._logged_in = False
+        self._session_start_time: Optional[float] = None
+
+    # Session expires after ~30-45 min; re-auth proactively at 25 min
+    SESSION_MAX_AGE = 25 * 60
 
     def __enter__(self):
         """Context manager entry - start browser."""
@@ -47,6 +50,18 @@ class CambridgePortalParser:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - close browser."""
         self.close()
+
+    def _is_login_page(self) -> bool:
+        """Check if current page is the login page (session expired)."""
+        if not self._page:
+            return True
+        url = self._page.url.lower()
+        if "login" in url or "signin" in url:
+            return True
+        try:
+            return self._page.locator('input#login-email').count() > 0
+        except Exception:
+            return False
 
     def login(self, log: Callable = print) -> bool:
         """
@@ -103,7 +118,14 @@ class CambridgePortalParser:
                     self._page.wait_for_load_state("networkidle", timeout=30000)
                     time.sleep(3)
 
+                    # Verify login succeeded
+                    if self._is_login_page():
+                        log("  ❌ Login verification failed - still on login page")
+                        logging.error("Portal login verification failed - still on login page")
+                        return False
+
                     self._logged_in = True
+                    self._session_start_time = time.time()
                     log("✓ Successfully logged in to dealer portal")
                     return True
 
@@ -136,6 +158,14 @@ class CambridgePortalParser:
                 log("❌ Cannot fetch product page: not logged in")
                 return None
 
+        # Proactive re-auth if session is old
+        if self._session_start_time and (time.time() - self._session_start_time) > self.SESSION_MAX_AGE:
+            log("  ⚠ Proactive re-authentication (session age > 25 min)")
+            logging.info("Proactive portal re-auth triggered")
+            self._logged_in = False
+            if not self.login(log):
+                return None
+
         # Construct full URL
         if product_url.startswith("/"):
             full_url = f"{self.portal_origin}{product_url}"
@@ -158,6 +188,24 @@ class CambridgePortalParser:
 
                 # Get page HTML
                 html = self._page.content()
+
+                # Detect session expiry — portal redirects to login page
+                if self._is_login_page():
+                    log(f"  ⚠ Session expired, re-authenticating...")
+                    logging.warning(f"Portal session expired during fetch: {full_url}")
+                    self._logged_in = False
+                    if not self.login(log):
+                        log("  ❌ Re-authentication failed")
+                        return None
+                    # Retry the page load after re-auth
+                    self._page.goto(full_url, wait_until="networkidle", timeout=30000)
+                    time.sleep(3)
+                    html = self._page.content()
+                    # If still on login page after re-auth, give up
+                    if self._is_login_page():
+                        log("  ❌ Still on login page after re-auth")
+                        logging.error(f"Still on login page after re-auth: {full_url}")
+                        return None
 
                 # Log success (with retry info if applicable)
                 if attempt == 1:
@@ -202,8 +250,6 @@ class CambridgePortalParser:
 
             Note: sales_unit is no longer extracted from portal - it comes from input file
         """
-        soup = BeautifulSoup(html, "lxml")
-
         # Debug: log current page URL before extraction
         current_url = self._page.url if self._page else "NO PAGE"
         debug_msg = f"  [DEBUG] Extracting portal data from page: {current_url}"
@@ -211,11 +257,10 @@ class CambridgePortalParser:
         logging.info(debug_msg)
 
         result = {
-            "gallery_images": self._extract_gallery_images(soup, log),
-            "weight": self._extract_weight(soup, log),
-            # sales_unit extraction removed - now sourced from input file
-            "cost": self._extract_cost(soup, log),
-            "model_number": self._extract_model_number(soup, log),
+            "gallery_images": self._extract_gallery_images(log),
+            "weight": self._extract_weight(log),
+            "cost": self._extract_cost(log),
+            "model_number": self._extract_model_number(log),
         }
 
         debug_msg = f"  [DEBUG] Portal extraction results: gallery={len(result['gallery_images'])} imgs, cost={result['cost']!r}, model={result['model_number']!r}"
@@ -224,14 +269,13 @@ class CambridgePortalParser:
 
         return result
 
-    def _extract_gallery_images(self, soup: BeautifulSoup, log: Callable) -> List[str]:
+    def _extract_gallery_images(self, log: Callable) -> List[str]:
         """
         Extract product gallery images using Playwright.
 
         Only captures images from the product gallery carousel in the order they appear.
 
         Args:
-            soup: BeautifulSoup object (not used, kept for compatibility)
             log: Logging function
 
         Returns:
@@ -313,12 +357,11 @@ class CambridgePortalParser:
             log(f"  ⚠ Error extracting gallery images: {e}")
             return images
 
-    def _extract_weight(self, soup: BeautifulSoup, log: Callable) -> str:
+    def _extract_weight(self, log: Callable) -> str:
         """
         Extract item weight from custom PDP fields using Playwright.
 
         Args:
-            soup: BeautifulSoup object (not used, kept for compatibility)
             log: Logging function
 
         Returns:
@@ -363,40 +406,11 @@ class CambridgePortalParser:
             log(f"  ⚠ Weight not found: {e}")
             return ""
 
-    def _extract_sales_unit(self, soup: BeautifulSoup, log: Callable) -> str:
-        """
-        Extract sales unit / unit of sale from custom PDP fields.
-
-        Args:
-            soup: BeautifulSoup object
-            log: Logging function
-
-        Returns:
-            Sales unit string or empty string
-        """
-        # Look for "SALE UNIT:" in custom PDP fields
-        # Format: <span class="custom-pdp-fields-label">SALE UNIT: Cube</span>
-        for span in soup.find_all("span", class_="custom-pdp-fields-label"):
-            text = span.get_text(strip=True)
-            if "SALE UNIT:" in text.upper():
-                # Extract the value after the label
-                # Format: "SALE UNIT: Cube"
-                match = re.search(r"SALE UNIT:\s*(.+)", text, re.IGNORECASE)
-                if match:
-                    value = match.group(1).strip()
-                    if value:
-                        log(f"  Found sales unit: {value}")
-                        return value
-
-        log("  ⚠ Sales unit not found")
-        return ""
-
-    def _extract_cost(self, soup: BeautifulSoup, log: Callable) -> str:
+    def _extract_cost(self, log: Callable) -> str:
         """
         Extract product cost/price using Playwright.
 
         Args:
-            soup: BeautifulSoup object (not used, kept for compatibility)
             log: Logging function
 
         Returns:
@@ -461,12 +475,11 @@ class CambridgePortalParser:
             logging.warning(warn_msg)
             return ""
 
-    def _extract_model_number(self, soup: BeautifulSoup, log: Callable) -> str:
+    def _extract_model_number(self, log: Callable) -> str:
         """
         Extract vendor SKU / model number using Playwright.
 
         Args:
-            soup: BeautifulSoup object (not used, kept for compatibility)
             log: Logging function
 
         Returns:

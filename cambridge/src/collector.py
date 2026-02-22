@@ -11,6 +11,7 @@ Main orchestration module that coordinates:
 - Shopify product generation
 """
 
+import logging
 import os
 import sys
 from typing import Dict, List, Any, Callable
@@ -241,6 +242,7 @@ class CambridgeCollector:
         """
         try:
             log(f"Scraping public page: {product_url}")
+            logging.info(f"Scraping public page: {product_url}")
 
             # Single Playwright navigation extracts everything
             shared_browser = self.portal_parser._browser if hasattr(self.portal_parser, '_browser') else None
@@ -255,6 +257,8 @@ class CambridgeCollector:
             collection = data.get("collection", "")
             colors = data.get("colors", [])
 
+            summary = f"Public data: title={bool(title)}, hero={bool(hero)}, gallery={len(gallery)}, desc={len(desc)}, specs={len(specs)}, colors={len(colors)}"
+            logging.info(summary)
             log(f"  ✓ Public data collected:")
             log(f"    - Title: {title if title else 'NOT FOUND'}")
             log(f"    - Collection: {collection if collection else 'NOT FOUND'}")
@@ -268,6 +272,7 @@ class CambridgeCollector:
 
         except Exception as e:
             log(f"  ❌ Failed to collect public data: {e}")
+            logging.error(f"Failed to collect public data from {product_url}: {e}")
             return {}
 
     def collect_portal_data(
@@ -293,6 +298,7 @@ class CambridgeCollector:
 
             if not product:
                 log("  ❌ Product not found in portal index")
+                logging.warning(f"Portal product not found: title={title!r}, color={color!r}")
                 return {}
 
             product_url = product.get("url", "")
@@ -306,6 +312,7 @@ class CambridgeCollector:
                 return {}
 
             # Fetch and parse product page
+            logging.info(f"Fetching portal page: {product_url}")
             html = self.portal_parser.fetch_product_page(product_url, log)
 
             if not html:
@@ -314,11 +321,13 @@ class CambridgeCollector:
 
             data = self.portal_parser.parse_product_page(html, log)
             log("  ✓ Portal data collected")
+            logging.info(f"Portal data collected: title={title!r}, color={color!r}")
 
             return data
 
         except Exception as e:
             log(f"  ❌ Failed to collect portal data: {e}")
+            logging.error(f"Failed to collect portal data: title={title!r}, color={color!r}, error={e}")
             return {}
 
     def close(self):

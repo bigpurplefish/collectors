@@ -173,40 +173,40 @@ def variant_has_portal_data(variant: Dict[str, Any]) -> bool:
     return has_sku and has_price and has_cost
 
 
+def _is_valid_price(val) -> bool:
+    """Return True if val is a non-NaN, non-None number."""
+    if val is None:
+        return False
+    if isinstance(val, float) and math.isnan(val):
+        return False
+    return isinstance(val, (int, float))
+
+
 def determine_variant_unit(variant_record: Dict[str, Any]) -> Optional[str]:
     """
     Determine the unit of sale for a variant record based on pricing data.
 
     This matches the logic in product_generator.py:
     - Priority: "Piece" if has cost_per_piece and price_per_piece
+    - Second: "Kit" if has cost_per_kit and price_per_kit
     - Fallback: "Sq Ft" if has sq_ft_cost and sq_ft_price
 
     Args:
         variant_record: Input record from Excel file
 
     Returns:
-        "Piece", "Sq Ft", or None if no pricing data
+        "Piece", "Kit", "Sq Ft", or None if no pricing data
     """
-    import math
-
-    # Check for piece pricing
-    cost_per_piece = variant_record.get("cost_per_piece")
-    price_per_piece = variant_record.get("price_per_piece")
-
-    has_piece_cost = cost_per_piece is not None and not (isinstance(cost_per_piece, float) and math.isnan(cost_per_piece))
-    has_piece_price = price_per_piece is not None and not (isinstance(price_per_piece, float) and math.isnan(price_per_piece))
-
-    if has_piece_cost and has_piece_price:
+    # Check for piece pricing (first priority)
+    if _is_valid_price(variant_record.get("cost_per_piece")) and _is_valid_price(variant_record.get("price_per_piece")):
         return "Piece"
 
-    # Check for sq ft pricing
-    sq_ft_cost = variant_record.get("sq_ft_cost")
-    sq_ft_price = variant_record.get("sq_ft_price")
+    # Check for kit pricing (second priority)
+    if _is_valid_price(variant_record.get("cost_per_kit")) and _is_valid_price(variant_record.get("price_per_kit")):
+        return "Kit"
 
-    has_sqft_cost = sq_ft_cost is not None and not (isinstance(sq_ft_cost, float) and math.isnan(sq_ft_cost))
-    has_sqft_price = sq_ft_price is not None and not (isinstance(sq_ft_price, float) and math.isnan(sq_ft_price))
-
-    if has_sqft_cost and has_sqft_price:
+    # Check for sq ft pricing (fallback)
+    if _is_valid_price(variant_record.get("sq_ft_cost")) and _is_valid_price(variant_record.get("sq_ft_price")):
         return "Sq Ft"
 
     return None
@@ -441,6 +441,9 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     )
             else:
                 # Not skip mode or product doesn't exist - process all records
+                empty_color_records = [v for v in variant_records if not v.get("color", "").strip()]
+                if empty_color_records:
+                    log_and_status(status_fn, f"  ⚠ Dropping {len(empty_color_records)} variant(s) with empty color")
                 variants_to_process = [v for v in variant_records if v.get("color", "").strip()]
 
             try:

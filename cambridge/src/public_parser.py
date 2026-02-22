@@ -97,7 +97,12 @@ class CambridgePublicParser:
                 logging.warning(f"Page load timeout, retrying: {product_url}")
                 log(f"    Page load timeout, retrying...")
                 time.sleep(3)
-                page.goto(product_url, wait_until="networkidle", timeout=30000)
+                try:
+                    page.goto(product_url, wait_until="networkidle", timeout=30000)
+                except PlaywrightTimeoutError:
+                    logging.error(f"Page load retry also timed out: {product_url}")
+                    log(f"    Retry also timed out")
+                    raise
             time.sleep(2)
 
             # Extract text fields from rendered DOM
@@ -241,7 +246,8 @@ class CambridgePublicParser:
                     log(f"    Lightbox counter: {counter}")
 
                     if " of " in counter:
-                        total_images = int(counter.split(" of ")[1])
+                        num_match = re.search(r'\d+', counter.split(" of ")[1])
+                        total_images = int(num_match.group()) if num_match else 10
                     else:
                         total_images = 10
 

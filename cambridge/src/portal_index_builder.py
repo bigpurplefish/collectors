@@ -138,6 +138,18 @@ class CambridgePortalIndexBuilder:
                 self._page.wait_for_load_state("networkidle", timeout=30000)
                 time.sleep(3)
 
+                # Verify login succeeded — check we're not still on login page
+                url = self._page.url.lower()
+                still_on_login = "login" in url or "signin" in url
+                if not still_on_login:
+                    try:
+                        still_on_login = self._page.locator('input#login-email').count() > 0
+                    except Exception:
+                        pass
+                if still_on_login:
+                    log_error(log, "Login verification failed - still on login page")
+                    return False
+
                 self._logged_in = True
                 log_success(log, "Successfully logged in to dealer portal")
                 return True

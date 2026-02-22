@@ -12,6 +12,7 @@ Handles:
 Implements dual logging pattern from LOGGING_REQUIREMENTS.md.
 """
 
+import math
 import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Callable
@@ -28,6 +29,15 @@ from utils.image_utils import (
     clean_and_verify_image_url
 )
 from utils.logging_utils import log_and_status
+
+
+def _is_valid_number(val) -> bool:
+    """Return True if val is a non-NaN, non-None number."""
+    if val is None:
+        return False
+    if isinstance(val, float) and math.isnan(val):
+        return False
+    return isinstance(val, (int, float))
 
 
 class CambridgeProductGenerator:
@@ -185,14 +195,13 @@ class CambridgeProductGenerator:
         # Option 2: Unit of Sale - Now simplified to single unit per color
         # Each color gets exactly one unit: Piece (priority) or Sq Ft (fallback)
         # Collect units used across all records
-        import math
         units_used = set()
         for record in variant_records:
             # Check piece first (priority)
-            if not math.isnan(record.get("cost_per_piece", float('nan'))) and not math.isnan(record.get("price_per_piece", float('nan'))):
+            if _is_valid_number(record.get("cost_per_piece")) and _is_valid_number(record.get("price_per_piece")):
                 units_used.add("Piece")
             # Fall back to sq ft if piece is missing
-            elif not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
+            elif _is_valid_number(record.get("sq_ft_cost")) and _is_valid_number(record.get("sq_ft_price")):
                 units_used.add("Sq Ft")
 
         # Only add Unit of Sale option if multiple units are used across colors
@@ -243,7 +252,6 @@ class CambridgeProductGenerator:
         Returns:
             List of variant dictionaries
         """
-        import math
         variants = []
         variant_position = 1
 
@@ -277,7 +285,7 @@ class CambridgeProductGenerator:
             # Check Piece first (priority)
             piece_cost = record.get("cost_per_piece", float('nan'))
             piece_price = record.get("price_per_piece", float('nan'))
-            if not math.isnan(piece_cost) and not math.isnan(piece_price):
+            if _is_valid_number(piece_cost) and _is_valid_number(piece_price):
                 unit_config = {
                     "name": "Piece",
                     "cost": piece_cost,
@@ -290,7 +298,7 @@ class CambridgeProductGenerator:
             if unit_config is None:
                 kit_cost = record.get("cost_per_kit", float('nan'))
                 kit_price = record.get("price_per_kit", float('nan'))
-                if not math.isnan(kit_cost) and not math.isnan(kit_price):
+                if _is_valid_number(kit_cost) and _is_valid_number(kit_price):
                     unit_config = {
                         "name": "Kit",
                         "cost": kit_cost,
@@ -303,7 +311,7 @@ class CambridgeProductGenerator:
             if unit_config is None:
                 sqft_cost = record.get("sq_ft_cost", float('nan'))
                 sqft_price = record.get("sq_ft_price", float('nan'))
-                if not math.isnan(sqft_cost) and not math.isnan(sqft_price):
+                if _is_valid_number(sqft_cost) and _is_valid_number(sqft_price):
                     unit_config = {
                         "name": "Sq Ft",
                         "cost": sqft_cost,
@@ -453,7 +461,6 @@ class CambridgeProductGenerator:
         Returns:
             List of image dictionaries with proper alt tags
         """
-        import math
         images = []
         position = 1
 
@@ -466,13 +473,13 @@ class CambridgeProductGenerator:
             # Check Piece first (priority)
             piece_cost = record.get("cost_per_piece", float('nan'))
             piece_price = record.get("price_per_piece", float('nan'))
-            if not math.isnan(piece_cost) and not math.isnan(piece_price):
+            if _is_valid_number(piece_cost) and _is_valid_number(piece_price):
                 color_units[color] = "Piece"
             # Check Kit second
-            elif not math.isnan(record.get("cost_per_kit", float('nan'))) and not math.isnan(record.get("price_per_kit", float('nan'))):
+            elif _is_valid_number(record.get("cost_per_kit")) and _is_valid_number(record.get("price_per_kit")):
                 color_units[color] = "Kit"
             # Fall back to Sq Ft
-            elif not math.isnan(record.get("sq_ft_cost", float('nan'))) and not math.isnan(record.get("sq_ft_price", float('nan'))):
+            elif _is_valid_number(record.get("sq_ft_cost")) and _is_valid_number(record.get("sq_ft_price")):
                 color_units[color] = "Sq Ft"
 
         # Get unique units used across all colors (for alt tag generation)
