@@ -11,6 +11,7 @@ Extracts:
 - Vendor SKU (model number)
 """
 
+import logging
 import re
 import time
 from typing import Dict, List, Any, Optional, Callable
@@ -203,6 +204,12 @@ class CambridgePortalParser:
         """
         soup = BeautifulSoup(html, "lxml")
 
+        # Debug: log current page URL before extraction
+        current_url = self._page.url if self._page else "NO PAGE"
+        debug_msg = f"  [DEBUG] Extracting portal data from page: {current_url}"
+        log(debug_msg)
+        logging.info(debug_msg)
+
         result = {
             "gallery_images": self._extract_gallery_images(soup, log),
             "weight": self._extract_weight(soup, log),
@@ -210,6 +217,10 @@ class CambridgePortalParser:
             "cost": self._extract_cost(soup, log),
             "model_number": self._extract_model_number(soup, log),
         }
+
+        debug_msg = f"  [DEBUG] Portal extraction results: gallery={len(result['gallery_images'])} imgs, cost={result['cost']!r}, model={result['model_number']!r}"
+        log(debug_msg)
+        logging.info(debug_msg)
 
         return result
 
@@ -396,6 +407,13 @@ class CambridgePortalParser:
             return ""
 
         try:
+            # Debug: log page URL and title
+            page_url = self._page.url
+            page_title = self._page.title()
+            debug_msg = f"  [DEBUG] _extract_cost: page={page_url}, title={page_title!r}"
+            log(debug_msg)
+            logging.info(debug_msg)
+
             # Wait for price element to load with longer timeout
             # Format: <span class="product-views-price-lead" itemprop="price" data-rate="448.6"> $448.60 </span>
             self._page.wait_for_selector("span.product-views-price-lead[itemprop='price']", timeout=10000)
@@ -408,6 +426,9 @@ class CambridgePortalParser:
             if price_element:
                 # Try data-rate attribute first (most reliable)
                 data_rate = price_element.get_attribute("data-rate")
+                debug_msg = f"  [DEBUG] _extract_cost: data-rate={data_rate!r}, visible={price_element.is_visible()}"
+                log(debug_msg)
+                logging.info(debug_msg)
                 if data_rate:
                     try:
                         cost = f"${float(data_rate):.2f}"
@@ -430,10 +451,14 @@ class CambridgePortalParser:
             return ""
 
         except PlaywrightTimeoutError:
-            log("  ⚠ Cost not found: timeout waiting for price element")
+            warn_msg = f"  ⚠ Cost not found: timeout waiting for price element (page={self._page.url})"
+            log(warn_msg)
+            logging.warning(warn_msg)
             return ""
         except Exception as e:
-            log(f"  ⚠ Cost not found: {e}")
+            warn_msg = f"  ⚠ Cost not found: {e} (page={self._page.url})"
+            log(warn_msg)
+            logging.warning(warn_msg)
             return ""
 
     def _extract_model_number(self, soup: BeautifulSoup, log: Callable) -> str:
@@ -452,6 +477,11 @@ class CambridgePortalParser:
             return ""
 
         try:
+            # Debug: log page URL
+            debug_msg = f"  [DEBUG] _extract_model_number: page={self._page.url}"
+            log(debug_msg)
+            logging.info(debug_msg)
+
             # Wait for SKU element to load with longer timeout
             self._page.wait_for_selector("span.product-line-sku-value", timeout=10000)
 
@@ -464,6 +494,9 @@ class CambridgePortalParser:
             sku_element = self._page.query_selector("span.product-line-sku-value")
             if sku_element:
                 value = sku_element.text_content().strip()
+                debug_msg = f"  [DEBUG] _extract_model_number: value={value!r}, visible={sku_element.is_visible()}"
+                log(debug_msg)
+                logging.info(debug_msg)
                 if value:
                     log(f"  Found model number: {value}")
                     return value
@@ -472,10 +505,14 @@ class CambridgePortalParser:
             return ""
 
         except PlaywrightTimeoutError:
-            log("  ⚠ Model number not found: timeout waiting for SKU element")
+            warn_msg = f"  ⚠ Model number not found: timeout waiting for SKU element (page={self._page.url})"
+            log(warn_msg)
+            logging.warning(warn_msg)
             return ""
         except Exception as e:
-            log(f"  ⚠ Model number not found: {e}")
+            warn_msg = f"  ⚠ Model number not found: {e} (page={self._page.url})"
+            log(warn_msg)
+            logging.warning(warn_msg)
             return ""
 
     def _normalize_url(self, url: str) -> str:

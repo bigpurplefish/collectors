@@ -9,6 +9,7 @@ Extracts all product data from JS-rendered DOM via Playwright:
 - Title, collection, colors, swatch images
 """
 
+import logging
 import re
 import sys
 import os
@@ -88,9 +89,15 @@ class CambridgePublicParser:
                 page = browser.new_page()
                 should_close_browser = True
 
-            # Navigate to product page
+            # Navigate to product page (retry once on timeout)
             log(f"    Navigating to {product_url}")
-            page.goto(product_url, wait_until="networkidle", timeout=30000)
+            try:
+                page.goto(product_url, wait_until="networkidle", timeout=30000)
+            except PlaywrightTimeoutError:
+                logging.warning(f"Page load timeout, retrying: {product_url}")
+                log(f"    Page load timeout, retrying...")
+                time.sleep(3)
+                page.goto(product_url, wait_until="networkidle", timeout=30000)
             time.sleep(2)
 
             # Extract text fields from rendered DOM
@@ -269,9 +276,11 @@ class CambridgePublicParser:
             result["gallery_images"] = gallery_urls
 
         except Exception as e:
-            log(f"    Playwright scrape_page error: {e}")
             import traceback
-            log(traceback.format_exc())
+            err_msg = f"Playwright scrape_page error for {product_url}: {e}"
+            log(f"    {err_msg}")
+            logging.error(err_msg)
+            logging.error(traceback.format_exc())
 
         finally:
             # Close page (always) and browser (only if we created it)
