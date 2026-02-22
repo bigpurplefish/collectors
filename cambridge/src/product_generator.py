@@ -200,17 +200,22 @@ class CambridgeProductGenerator:
             # Check piece first (priority)
             if _is_valid_number(record.get("cost_per_piece")) and _is_valid_number(record.get("price_per_piece")):
                 units_used.add("Piece")
-            # Fall back to sq ft if piece is missing
+            # Check kit second
+            elif _is_valid_number(record.get("cost_per_kit")) and _is_valid_number(record.get("price_per_kit")):
+                units_used.add("Kit")
+            # Fall back to sq ft
             elif _is_valid_number(record.get("sq_ft_cost")) and _is_valid_number(record.get("sq_ft_price")):
                 units_used.add("Sq Ft")
 
         # Only add Unit of Sale option if multiple units are used across colors
         # (e.g., some colors use Piece, others use Sq Ft)
         if len(units_used) > 1:
-            # Maintain order: Piece, then Sq Ft
+            # Maintain order: Piece, Kit, then Sq Ft
             ordered_units = []
             if "Piece" in units_used:
                 ordered_units.append("Piece")
+            if "Kit" in units_used:
+                ordered_units.append("Kit")
             if "Sq Ft" in units_used:
                 ordered_units.append("Sq Ft")
 

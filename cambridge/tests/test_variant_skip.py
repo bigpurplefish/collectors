@@ -76,23 +76,30 @@ def test_variant_has_portal_data():
     print("=" * 80)
     print("")
 
-    # Test 1: Variant with complete portal data
-    complete_variant = {"option1": "Red", "sku": "TEST-RED", "price": "10.00", "cost": "5.00"}
+    # Test 1: Variant with complete portal data (includes portal-sourced fields)
+    complete_variant = {
+        "option1": "Red", "sku": "TEST-RED", "price": "10.00", "cost": "5.00",
+        "grams": 1500,
+        "metafields": [{"key": "vendor_sku", "value": "MODEL-123"}]
+    }
     assert variant_has_portal_data(complete_variant) == True, "Should return True for complete data"
     print("✓ Test 1: Complete portal data detected")
 
     # Test 2: Variant missing SKU
-    missing_sku = {"option1": "Blue", "price": "10.00", "cost": "5.00"}
+    missing_sku = {"option1": "Blue", "price": "10.00", "cost": "5.00", "grams": 1500,
+                   "metafields": [{"key": "vendor_sku", "value": "MODEL-123"}]}
     assert variant_has_portal_data(missing_sku) == False, "Should return False when SKU missing"
     print("✓ Test 2: Missing SKU detected")
 
     # Test 3: Variant missing price
-    missing_price = {"option1": "Green", "sku": "TEST-GREEN", "cost": "5.00"}
+    missing_price = {"option1": "Green", "sku": "TEST-GREEN", "cost": "5.00", "grams": 1500,
+                     "metafields": [{"key": "vendor_sku", "value": "MODEL-123"}]}
     assert variant_has_portal_data(missing_price) == False, "Should return False when price missing"
     print("✓ Test 3: Missing price detected")
 
     # Test 4: Variant missing cost
-    missing_cost = {"option1": "Yellow", "sku": "TEST-YELLOW", "price": "10.00"}
+    missing_cost = {"option1": "Yellow", "sku": "TEST-YELLOW", "price": "10.00", "grams": 1500,
+                    "metafields": [{"key": "vendor_sku", "value": "MODEL-123"}]}
     assert variant_has_portal_data(missing_cost) == False, "Should return False when cost missing"
     print("✓ Test 4: Missing cost detected")
 
@@ -100,6 +107,17 @@ def test_variant_has_portal_data():
     empty_variant = {}
     assert variant_has_portal_data(empty_variant) == False, "Should return False for empty variant"
     print("✓ Test 5: Empty variant handled correctly")
+
+    # Test 6: Variant with Excel data but no portal weight/model (the bug this fixes)
+    excel_only = {"option1": "Red", "sku": "TEST-RED", "price": "10.00", "cost": "5.00", "grams": 0}
+    assert variant_has_portal_data(excel_only) == False, "Should return False when portal data missing"
+    print("✓ Test 6: Excel-only data (no portal weight/model) detected as incomplete")
+
+    # Test 7: Variant with weight but no model number
+    no_model = {"option1": "Red", "sku": "TEST-RED", "price": "10.00", "cost": "5.00",
+                "grams": 1500, "metafields": []}
+    assert variant_has_portal_data(no_model) == False, "Should return False when model number missing"
+    print("✓ Test 7: Missing model number detected")
 
     print("")
     print("=" * 80)
@@ -184,11 +202,15 @@ def test_variant_skip_logic():
     print("")
 
     # Simulate existing product with 2 variants: Red/Piece and Blue/Piece
+    # Include portal-sourced fields (grams, vendor_sku metafield) to pass portal data check
+    _mf = [{"key": "vendor_sku", "value": "MODEL-123"}]
     existing_product = {
         "title": "Test Product",
         "variants": [
-            {"option1": "Red", "option2": "Piece", "sku": "TEST-RED-P", "price": "10.00", "cost": "5.00"},
-            {"option1": "Blue", "option2": "Piece", "sku": "TEST-BLUE-P", "price": "15.00", "cost": "7.50"},
+            {"option1": "Red", "option2": "Piece", "sku": "TEST-RED-P", "price": "10.00", "cost": "5.00",
+             "grams": 1500, "metafields": _mf},
+            {"option1": "Blue", "option2": "Piece", "sku": "TEST-BLUE-P", "price": "15.00", "cost": "7.50",
+             "grams": 2000, "metafields": _mf},
         ]
     }
 
@@ -271,12 +293,17 @@ def test_variant_order_preservation():
 
     # Simulate existing product with variants in specific order
     # Order: Red/Piece, Blue/Piece, Green/Piece
+    # Include portal-sourced fields (grams, vendor_sku metafield) to pass portal data check
+    _mf = [{"key": "vendor_sku", "value": "MODEL-456"}]
     existing_product = {
         "title": "Test Product",
         "variants": [
-            {"option1": "Red", "option2": "Piece", "sku": "TEST-RED-P", "price": "10.00", "cost": "5.00"},
-            {"option1": "Blue", "option2": "Piece", "sku": "TEST-BLUE-P", "price": "15.00", "cost": "7.50"},
-            {"option1": "Green", "option2": "Piece", "sku": "TEST-GREEN-P", "price": "12.00", "cost": "6.00"},
+            {"option1": "Red", "option2": "Piece", "sku": "TEST-RED-P", "price": "10.00", "cost": "5.00",
+             "grams": 1500, "metafields": _mf},
+            {"option1": "Blue", "option2": "Piece", "sku": "TEST-BLUE-P", "price": "15.00", "cost": "7.50",
+             "grams": 2000, "metafields": _mf},
+            {"option1": "Green", "option2": "Piece", "sku": "TEST-GREEN-P", "price": "12.00", "cost": "6.00",
+             "grams": 1800, "metafields": _mf},
         ]
     }
 

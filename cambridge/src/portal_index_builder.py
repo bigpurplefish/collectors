@@ -121,7 +121,7 @@ class CambridgePortalIndexBuilder:
             email_input = self._page.locator('input[type="email"], input[name="email"], input#login-email')
             if email_input.count() > 0:
                 email_input.fill(self.username)
-                log_and_status(log, f"Filled username: {self.username}", ui_msg="Filled username")
+                log_and_status(log, "Filled username", ui_msg="Filled username")
 
             password_input = self._page.locator('input[type="password"], input[name="password"], input#login-password')
             if password_input.count() > 0:

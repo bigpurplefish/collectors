@@ -227,54 +227,35 @@ class CambridgePublicParser:
             except Exception as e:
                 log(f"    Hero image extraction failed: {e}")
 
-            # Extract gallery images from lightbox
+            # Extract gallery images — fast DOM query first, lightbox click fallback
             gallery_urls = []
             try:
-                first_image = page.locator("a.popup-img").first
-                image_count = first_image.count()
-                log(f"    Found {image_count} popup-img links")
+                link_count = page.locator("a.popup-img").count()
+                log(f"    Found {link_count} popup-img links")
 
-                if image_count > 0:
-                    log(f"    Clicking first image to open lightbox...")
-                    page.evaluate("document.querySelector('a.popup-img').click()")
-                    time.sleep(1)
+                if link_count > 0:
+                    # Fast path: extract href attributes directly from DOM
+                    gallery_urls = page.evaluate("""
+                        Array.from(document.querySelectorAll('a.popup-img'))
+                            .map(a => a.href)
+                            .filter(url => url && !url.includes('icon') && !url.includes('logo'))
+                    """)
 
-                    log(f"    Waiting for lightbox...")
-                    page.wait_for_selector(".mfp-img", timeout=5000)
-
-                    counter = page.locator(".mfp-counter").text_content()
-                    log(f"    Lightbox counter: {counter}")
-
-                    if " of " in counter:
-                        num_match = re.search(r'\d+', counter.split(" of ")[1])
-                        total_images = int(num_match.group()) if num_match else 10
+                    if gallery_urls:
+                        # Normalize URLs
+                        gallery_urls = [self._normalize_image_url(u) for u in gallery_urls]
+                        # Deduplicate while preserving order
+                        original_count = len(gallery_urls)
+                        gallery_urls = list(dict.fromkeys(gallery_urls))
+                        if original_count > len(gallery_urls):
+                            log(f"    Removed {original_count - len(gallery_urls)} duplicates")
+                        log(f"    Extracted {len(gallery_urls)} gallery images from DOM")
                     else:
-                        total_images = 10
-
-                    log(f"    Extracting {total_images} images from lightbox...")
-
-                    for i in range(total_images):
-                        img_element = page.locator(".mfp-img")
-                        if img_element.count() > 0:
-                            src = img_element.get_attribute("src")
-                            if src:
-                                url = self._normalize_image_url(src)
-                                gallery_urls.append(url)
-                                log(f"      Position {i+1}: {url}")
-
-                        if i < total_images - 1:
-                            next_button = page.locator(".mfp-arrow-right")
-                            if next_button.count() > 0:
-                                next_button.click()
-                                time.sleep(0.5)
-
-                    # Deduplicate while preserving order
-                    original_count = len(gallery_urls)
-                    gallery_urls = list(dict.fromkeys(gallery_urls))
-                    if original_count > len(gallery_urls):
-                        log(f"    Removed {original_count - len(gallery_urls)} duplicates")
+                        # Fallback: click through lightbox
+                        log(f"    DOM extraction empty, falling back to lightbox clicks...")
+                        gallery_urls = self._extract_gallery_via_lightbox(page, log)
                 else:
-                    log(f"    No popup-img links found, skipping lightbox extraction")
+                    log(f"    No popup-img links found, skipping gallery extraction")
 
             except PlaywrightTimeoutError as e:
                 log(f"    Lightbox timeout: {e}")
@@ -303,6 +284,54 @@ class CambridgePublicParser:
                     pass
 
         return result
+
+    def _extract_gallery_via_lightbox(self, page: Page, log: Callable) -> list:
+        """Extract gallery images by clicking through the lightbox (slow fallback)."""
+        gallery_urls = []
+        try:
+            log(f"    Clicking first image to open lightbox...")
+            page.evaluate("document.querySelector('a.popup-img').click()")
+            time.sleep(1)
+
+            log(f"    Waiting for lightbox...")
+            page.wait_for_selector(".mfp-img", timeout=5000)
+
+            counter = page.locator(".mfp-counter").text_content()
+            log(f"    Lightbox counter: {counter}")
+
+            if " of " in counter:
+                num_match = re.search(r'\d+', counter.split(" of ")[1])
+                total_images = int(num_match.group()) if num_match else 10
+            else:
+                total_images = 10
+
+            log(f"    Extracting {total_images} images from lightbox...")
+
+            for i in range(total_images):
+                img_element = page.locator(".mfp-img")
+                if img_element.count() > 0:
+                    src = img_element.get_attribute("src")
+                    if src:
+                        url = self._normalize_image_url(src)
+                        gallery_urls.append(url)
+
+                if i < total_images - 1:
+                    next_button = page.locator(".mfp-arrow-right")
+                    if next_button.count() > 0:
+                        next_button.click()
+                        time.sleep(0.5)
+
+            # Deduplicate while preserving order
+            original_count = len(gallery_urls)
+            gallery_urls = list(dict.fromkeys(gallery_urls))
+            if original_count > len(gallery_urls):
+                log(f"    Removed {original_count - len(gallery_urls)} duplicates")
+            log(f"    Extracted {len(gallery_urls)} gallery images from lightbox")
+
+        except PlaywrightTimeoutError as e:
+            log(f"    Lightbox fallback timeout: {e}")
+
+        return gallery_urls
 
     def _normalize_image_url(self, url: str) -> str:
         """

@@ -4,10 +4,9 @@ Search functionality for Cambridge collector.
 Matches input products against cached product index using fuzzy matching.
 """
 
-import re
 import sys
 import os
-from typing import Dict, List, Any, Callable, Set, Optional
+from typing import Dict, List, Any, Callable, Optional
 from rapidfuzz import fuzz
 
 # Add parent directories to path for shared imports
@@ -32,11 +31,6 @@ class CambridgeSearcher:
         # Product index (loaded from cache)
         self.index: Optional[Dict[str, Any]] = None
 
-        # Common stop words for fuzzy matching
-        self._common_stop: Set[str] = {
-            "cambridge", "pavers", "pavingstones", "collection", "design",
-            "kit", "pc", "piece", "with", "and", "for", "the"
-        }
 
     def load_index(self, index: Dict[str, Any], log: Callable = print):
         """
@@ -138,44 +132,3 @@ class CambridgeSearcher:
 
         return product_url
 
-    def _keyword_set(self, s: str) -> Set[str]:
-        """
-        Extract and normalize keyword set from text.
-
-        Args:
-            s: Input string
-
-        Returns:
-            Set of normalized keywords
-        """
-        toks = [t for t in re.split(r"\W+", s.lower()) if t]
-        out: Set[str] = set()
-
-        for t in toks:
-            if t.isdigit() or len(t) < 2:
-                continue
-            if t in self._common_stop:
-                continue
-            out.add(t)
-
-        return out
-
-    def _fuzzy_match_score(
-        self,
-        candidate_kw: Set[str],
-        query_kw: Set[str]
-    ) -> float:
-        """
-        Calculate fuzzy match score based on keyword overlap.
-
-        Args:
-            candidate_kw: Candidate keywords
-            query_kw: Query keywords
-
-        Returns:
-            Match score (0.0 to 1.0)
-        """
-        if not query_kw:
-            return 0.0
-        intersection = len(candidate_kw & query_kw)
-        return float(intersection) / max(1, len(query_kw))

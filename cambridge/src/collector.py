@@ -319,7 +319,7 @@ class CambridgeCollector:
                 log("  ❌ Failed to fetch portal page")
                 return {}
 
-            data = self.portal_parser.parse_product_page(html, log)
+            data = self.portal_parser.parse_product_page(log)
             log("  ✓ Portal data collected")
             logging.info(f"Portal data collected: title={title!r}, color={color!r}")
 

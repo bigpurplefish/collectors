@@ -159,18 +159,28 @@ def extract_existing_variants_by_color_unit(product: Dict[str, Any]) -> Dict[tup
 
 def variant_has_portal_data(variant: Dict[str, Any]) -> bool:
     """
-    Check if a variant has complete portal data (SKU, price, cost).
+    Check if a variant has complete portal data.
+
+    Checks fields that actually come from portal scraping (weight, model_number)
+    in addition to SKU/price/cost from the input file. This prevents skip mode
+    from permanently locking in products that have Excel pricing but zero portal data.
 
     Args:
         variant: Single variant dictionary
 
     Returns:
-        True if variant has SKU, price, and cost
+        True if variant has SKU, price, cost, weight, and vendor SKU from portal
     """
     has_sku = bool(variant.get("sku"))
     has_price = bool(variant.get("price"))
     has_cost = bool(variant.get("cost"))
-    return has_sku and has_price and has_cost
+    has_weight = variant.get("grams", 0) > 0
+    has_model = False
+    for mf in variant.get("metafields", []):
+        if mf.get("key") == "vendor_sku" and mf.get("value"):
+            has_model = True
+            break
+    return has_sku and has_price and has_cost and has_weight and has_model
 
 
 def _is_valid_price(val) -> bool:

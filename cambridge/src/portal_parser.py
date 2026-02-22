@@ -77,6 +77,21 @@ class CambridgePortalParser:
             log("Already logged in to dealer portal")
             return True
 
+        # Close existing browser before creating new one (prevents leak on re-auth)
+        if self._browser:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
+            self._browser = None
+        if self._playwright:
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = None
+        self._page = None
+
         log("Logging in to Cambridge dealer portal...")
 
         try:
@@ -101,7 +116,7 @@ class CambridgePortalParser:
                 email_input = self._page.locator('input[type="email"], input[name="email"], input#login-email')
                 if email_input.count() > 0:
                     email_input.fill(self.username)
-                    log(f"  ✓ Filled username: {self.username}")
+                    log("  ✓ Filled username")
 
                 password_input = self._page.locator('input[type="password"], input[name="password"], input#login-password')
                 if password_input.count() > 0:
@@ -183,8 +198,8 @@ class CambridgePortalParser:
                 # Navigate to product page
                 self._page.goto(full_url, wait_until="networkidle", timeout=30000)
 
-                # Wait for page to render (SuiteCommerce apps need time to load)
-                time.sleep(3)
+                # Brief settle time after networkidle
+                time.sleep(1)
 
                 # Get page HTML
                 html = self._page.content()
@@ -233,12 +248,11 @@ class CambridgePortalParser:
 
         return None
 
-    def parse_product_page(self, html: str, log: Callable = print) -> Dict[str, Any]:
+    def parse_product_page(self, log: Callable = print) -> Dict[str, Any]:
         """
-        Parse product page HTML from dealer portal.
+        Extract product data from the current portal page via Playwright.
 
         Args:
-            html: HTML content
             log: Logging function
 
         Returns:
@@ -256,11 +270,74 @@ class CambridgePortalParser:
         log(debug_msg)
         logging.info(debug_msg)
 
+        # Try consolidated extraction first (single JS call for non-gallery fields)
+        consolidated = {}
+        try:
+            consolidated = self._page.evaluate("""
+                (() => {
+                    const result = {weight: '', cost: '', model_number: ''};
+
+                    // Weight: find "ITEM WEIGHT:" in custom PDP fields
+                    const labels = document.querySelectorAll('span.custom-pdp-fields-label');
+                    for (const label of labels) {
+                        const text = label.textContent.trim();
+                        const m = text.match(/ITEM WEIGHT:\\s*(\\d+(?:\\.\\d+)?)\\s*(lb|lbs|kg|kgs|oz)/i);
+                        if (m) { result.weight = m[1] + ' ' + m[2]; break; }
+                    }
+
+                    // Cost: data-rate attribute on price span
+                    const priceEl = document.querySelector("span.product-views-price-lead[itemprop='price']");
+                    if (priceEl) {
+                        const rate = priceEl.getAttribute('data-rate');
+                        if (rate) {
+                            result.cost = '$' + parseFloat(rate).toFixed(2);
+                        } else {
+                            const text = priceEl.textContent.trim();
+                            const pm = text.match(/\\$\\s*(\\d+(?:\\.\\d{2})?)/);
+                            if (pm) result.cost = '$' + pm[1];
+                        }
+                    }
+
+                    // Model number: SKU value
+                    const skuEl = document.querySelector('span.product-line-sku-value');
+                    if (skuEl) {
+                        result.model_number = skuEl.textContent.trim();
+                    }
+
+                    return result;
+                })()
+            """)
+        except Exception as e:
+            logging.warning(f"Consolidated extraction failed, falling back to individual: {e}")
+
+        # Gallery images still need individual extraction (carousel DOM traversal)
+        gallery = self._extract_gallery_images(log)
+
+        # Use consolidated results with individual fallbacks
+        weight = consolidated.get("weight", "")
+        cost = consolidated.get("cost", "")
+        model = consolidated.get("model_number", "")
+
+        # Fall back to individual extractors if consolidated missed fields
+        if not weight:
+            weight = self._extract_weight(log)
+        if not cost:
+            cost = self._extract_cost(log)
+        if not model:
+            model = self._extract_model_number(log)
+
+        if weight:
+            log(f"  Found weight: {weight}")
+        if cost:
+            log(f"  Found cost: {cost}")
+        if model:
+            log(f"  Found model number: {model}")
+
         result = {
-            "gallery_images": self._extract_gallery_images(log),
-            "weight": self._extract_weight(log),
-            "cost": self._extract_cost(log),
-            "model_number": self._extract_model_number(log),
+            "gallery_images": gallery,
+            "weight": weight,
+            "cost": cost,
+            "model_number": model,
         }
 
         debug_msg = f"  [DEBUG] Portal extraction results: gallery={len(result['gallery_images'])} imgs, cost={result['cost']!r}, model={result['model_number']!r}"
@@ -293,8 +370,6 @@ class CambridgePortalParser:
             try:
                 self._page.wait_for_selector(".bx-viewport ul.bxslider li img", timeout=10000)
                 has_carousel = True
-                # Give extra time for images to load
-                time.sleep(0.5)
             except PlaywrightTimeoutError:
                 log("  ⚠ Carousel not found, trying fallback image")
 
@@ -375,9 +450,6 @@ class CambridgePortalParser:
             # Wait for custom fields to load with longer timeout
             self._page.wait_for_selector("span.custom-pdp-fields-label", timeout=10000)
 
-            # Give extra time for JavaScript to render
-            time.sleep(0.5)
-
             # Get all custom field labels
             field_labels = self._page.query_selector_all("span.custom-pdp-fields-label")
 
@@ -431,9 +503,6 @@ class CambridgePortalParser:
             # Wait for price element to load with longer timeout
             # Format: <span class="product-views-price-lead" itemprop="price" data-rate="448.6"> $448.60 </span>
             self._page.wait_for_selector("span.product-views-price-lead[itemprop='price']", timeout=10000)
-
-            # Give extra time for JavaScript to render
-            time.sleep(0.5)
 
             # Get price element
             price_element = self._page.query_selector("span.product-views-price-lead[itemprop='price']")
@@ -497,9 +566,6 @@ class CambridgePortalParser:
 
             # Wait for SKU element to load with longer timeout
             self._page.wait_for_selector("span.product-line-sku-value", timeout=10000)
-
-            # Give extra time for JavaScript to render
-            time.sleep(0.5)
 
             # Get SKU element
             # Format: <span class="product-line-sku-value" itemprop="sku"> 11003310 </span>
