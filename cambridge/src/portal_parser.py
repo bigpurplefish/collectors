@@ -39,6 +39,7 @@ class CambridgePortalParser:
         self._page: Optional[Page] = None
         self._logged_in = False
         self._session_start_time: Optional[float] = None
+        self._login_failures = 0
 
     # Session expires after ~30-45 min; re-auth proactively at 25 min
     SESSION_MAX_AGE = 25 * 60
@@ -128,20 +129,28 @@ class CambridgePortalParser:
                 if login_button.count() > 0:
                     login_button.click()
                     log("  ✓ Clicked login button")
+                    logging.info("Clicked login button")
 
-                    # Wait for navigation after login
-                    self._page.wait_for_load_state("networkidle", timeout=30000)
-                    time.sleep(3)
-
-                    # Verify login succeeded
-                    if self._is_login_page():
-                        log("  ❌ Login verification failed - still on login page")
-                        logging.error("Portal login verification failed - still on login page")
-                        return False
+                    # Wait for login form to disappear (proves login succeeded)
+                    # More reliable than sleep + DOM check, handles slow portals
+                    try:
+                        self._page.wait_for_selector(
+                            'input#login-email', state='hidden', timeout=20000
+                        )
+                    except PlaywrightTimeoutError:
+                        # Login form still visible — retry verification with back-off
+                        log("  ⚠ Login form still visible, waiting longer...")
+                        logging.warning("Login form still visible after 20s, retrying verification")
+                        time.sleep(5)
+                        if self._is_login_page():
+                            log("  ❌ Login verification failed - still on login page")
+                            logging.error("Portal login verification failed - still on login page")
+                            return False
 
                     self._logged_in = True
                     self._session_start_time = time.time()
                     log("✓ Successfully logged in to dealer portal")
+                    logging.info("Successfully logged in to dealer portal")
                     return True
 
             except Exception as e:
@@ -169,9 +178,14 @@ class CambridgePortalParser:
             HTML content or None if all attempts failed
         """
         if not self._logged_in:
-            if not self.login(log):
-                log("❌ Cannot fetch product page: not logged in")
+            if self._login_failures >= 2:
+                log("❌ Skipping portal login (2 consecutive failures — check credentials)")
                 return None
+            if not self.login(log):
+                self._login_failures += 1
+                log(f"❌ Cannot fetch product page: not logged in (failure {self._login_failures}/2)")
+                return None
+            self._login_failures = 0
 
         # Proactive re-auth if session is old
         if self._session_start_time and (time.time() - self._session_start_time) > self.SESSION_MAX_AGE:
