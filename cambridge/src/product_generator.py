@@ -57,6 +57,11 @@ def _is_valid_number(val) -> bool:
     return isinstance(val, (int, float))
 
 
+def _normalize_color(name: str) -> str:
+    """Normalize color name for comparison (slashes to spaces, collapse whitespace)."""
+    return " ".join(name.replace("/", " ").split()).lower()
+
+
 class CambridgeProductGenerator:
     """Generates Shopify products from collected Cambridge data."""
 
@@ -410,7 +415,7 @@ class CambridgeProductGenerator:
             # Priority: public site swatch image > first portal gallery image
             color_swatches = (public_data or {}).get("color_swatches", {})
             swatch_url = next(
-                (url for name, url in color_swatches.items() if name.lower() == color.lower()),
+                (url for name, url in color_swatches.items() if _normalize_color(name) == _normalize_color(color)),
                 None
             )
             fallback_url = gallery_images[0] if gallery_images else None
@@ -549,7 +554,7 @@ class CambridgeProductGenerator:
         for color in portal_data_by_color:
             # Case-insensitive lookup
             swatch_url = next(
-                (url for name, url in color_swatches.items() if name.lower() == color.lower()),
+                (url for name, url in color_swatches.items() if _normalize_color(name) == _normalize_color(color)),
                 None
             )
             if swatch_url:
