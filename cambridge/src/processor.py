@@ -192,6 +192,18 @@ def _is_valid_price(val) -> bool:
     return isinstance(val, (int, float))
 
 
+def _first_nonempty_field(variant_records: list, field: str) -> str:
+    """Scan all variant records and return the first non-empty value for field."""
+    for v in variant_records:
+        val = v.get(field, "")
+        if isinstance(val, float) and math.isnan(val):
+            continue
+        val = str(val).strip() if val is not None else ""
+        if val:
+            return val
+    return ""
+
+
 def determine_variant_unit(variant_record: Dict[str, Any]) -> Optional[str]:
     """
     Determine the unit of sale for a variant record based on pricing data.
@@ -461,23 +473,8 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 first_variant = variant_records[0]
                 first_color = first_variant.get("color", "")
 
-                # Handle public_title (may be NaN from Excel)
-                public_title_raw = first_variant.get("public_title", "")
-                if isinstance(public_title_raw, float) and math.isnan(public_title_raw):
-                    public_title = ""
-                elif isinstance(public_title_raw, str):
-                    public_title = public_title_raw.strip()
-                else:
-                    public_title = str(public_title_raw).strip() if public_title_raw is not None else ""
-
-                # Handle portal_title_fallback (may be NaN from Excel)
-                fallback_raw = first_variant.get("portal_title_fallback", "")
-                if isinstance(fallback_raw, float) and math.isnan(fallback_raw):
-                    portal_title_fallback = ""
-                elif isinstance(fallback_raw, str):
-                    portal_title_fallback = fallback_raw.strip()
-                else:
-                    portal_title_fallback = str(fallback_raw).strip() if fallback_raw is not None else ""
+                public_title = _first_nonempty_field(variant_records, "public_title")
+                portal_title_fallback = _first_nonempty_field(variant_records, "portal_title_fallback")
 
                 # Find product URL using public_title (skip if empty)
                 product_url = ""
