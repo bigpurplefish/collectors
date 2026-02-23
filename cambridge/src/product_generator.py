@@ -12,11 +12,17 @@ Handles:
 Implements dual logging pattern from LOGGING_REQUIREMENTS.md.
 """
 
+import logging
 import math
+import os
 import sys
+from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Callable
 from collections import defaultdict
+
+import requests
+from PIL import Image
 
 # Add parent collectors directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
@@ -29,6 +35,17 @@ from utils.image_utils import (
     clean_and_verify_image_url
 )
 from utils.logging_utils import log_and_status
+
+# image_quality lives in shared/src/ — import via importlib to avoid collision with local src/
+import importlib.util as _ilu
+_iq_spec = _ilu.spec_from_file_location(
+    "image_quality",
+    str(Path(__file__).parent.parent.parent / "shared" / "src" / "image_quality.py"),
+)
+_iq_mod = _ilu.module_from_spec(_iq_spec)
+_iq_spec.loader.exec_module(_iq_mod)
+load_placeholder_images = _iq_mod.load_placeholder_images
+is_placeholder = _iq_mod.is_placeholder
 
 
 def _is_valid_number(val) -> bool:
@@ -52,6 +69,21 @@ class CambridgeProductGenerator:
         """
         self.config = config or {}
         self.sku_generator = SKUGenerator()
+        placeholder_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "placeholder_images")
+        self._placeholders = load_placeholder_images(placeholder_dir)
+
+    def _is_placeholder_url(self, url: str) -> bool:
+        """Check if a URL points to a placeholder image via perceptual hash."""
+        if not self._placeholders:
+            return False
+        try:
+            resp = requests.get(url, timeout=10, stream=True)
+            if resp.status_code != 200:
+                return False
+            img = Image.open(BytesIO(resp.content)).convert("RGB")
+            return is_placeholder(img, self._placeholders, threshold=10)
+        except Exception:
+            return False
 
     def group_by_title(
         self,
@@ -381,7 +413,10 @@ class CambridgeProductGenerator:
                 (url for name, url in color_swatches.items() if name.lower() == color.lower()),
                 None
             )
-            swatch_value = swatch_url or (gallery_images[0] if gallery_images else None)
+            fallback_url = gallery_images[0] if gallery_images else None
+            if fallback_url and not swatch_url and self._is_placeholder_url(fallback_url):
+                fallback_url = None
+            swatch_value = swatch_url or fallback_url
             if swatch_value:
                 variant["metafields"].append({
                     "namespace": "custom",
@@ -548,6 +583,9 @@ class CambridgeProductGenerator:
                 val_counts["portal"][0] += 1
                 cleaned_url = clean_and_verify_image_url(img_url, timeout=10)
                 if cleaned_url:
+                    if self._is_placeholder_url(cleaned_url):
+                        logging.debug(f"Skipping placeholder portal image: {cleaned_url}")
+                        continue
                     val_counts["portal"][1] += 1
                     url_lower = cleaned_url.lower()
                     # Only deduplicate within same color
