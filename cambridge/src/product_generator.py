@@ -572,6 +572,11 @@ class CambridgeProductGenerator:
                             "counter": 0
                         })
 
+        # Track which colors got a valid public swatch (skip redundant portal _01)
+        colors_with_public_swatch = {
+            img["color"] for img in unique_images if img["type"] == "swatch"
+        }
+
         # Phase 1: Collect portal images (all colors)
         # Deduplicate within each color only (not across colors)
         portal_img_counter = {}
@@ -598,6 +603,9 @@ class CambridgeProductGenerator:
                         color_seen_urls.add(url_lower)
                         seen_urls.add(url_lower)  # Add to global for public image deduplication
                         portal_img_counter[color] += 1
+                        # Skip first portal image when public swatch exists (redundant)
+                        if portal_img_counter[color] == 1 and color in colors_with_public_swatch:
+                            continue
                         unique_images.append({
                             "url": cleaned_url,
                             "type": "portal",
