@@ -76,6 +76,7 @@ enriched/
 download_images_holding/
 
 # Configuration files that might contain secrets
+config.json
 *_config.json
 .collection_app.json
 .media_captor_gui.json
