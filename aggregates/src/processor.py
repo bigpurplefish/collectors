@@ -81,47 +81,39 @@ def _find_parent_row(rows: List[Dict], parent_sku: Any) -> Dict:
     return rows[0]
 
 
-def _determine_option(rows: List[Dict]) -> Optional[Dict]:
-    """Determine the variant option for a group of rows.
+def _determine_options(rows: List[Dict]) -> List[Dict]:
+    """Determine variant options for a group of rows.
 
-    Returns dict with 'name' and 'values' or None for single-variant products.
+    Returns list of option dicts, each with 'name', 'field', and 'values'.
+    Empty list for standalone products (single row, no populated option fields).
     """
     if len(rows) <= 1:
-        return None
+        return []
 
-    # Check if color varies
-    colors = [r.get("color") for r in rows]
-    unique_colors = list(dict.fromkeys(c for c in colors if c is not None))
-    if len(unique_colors) > 1:
-        return {"name": "Color", "values": unique_colors}
+    options = []
 
-    # Check if size varies
-    sizes = [r.get("size") for r in rows]
-    unique_sizes = list(dict.fromkeys(s for s in sizes if s is not None))
-    if len(unique_sizes) > 1:
-        return {"name": "Size", "values": unique_sizes}
+    # Check color
+    colors = list(dict.fromkeys(
+        str(c) for c in (r.get("color") for r in rows) if c is not None
+    ))
+    if colors:
+        options.append({"name": "Color", "field": "color", "values": colors})
 
-    # Fallback: use title differences as "Type"
-    titles = [r.get("title", "") for r in rows]
-    unique_titles = list(dict.fromkeys(titles))
-    if len(unique_titles) > 1:
-        return {"name": "Type", "values": unique_titles}
+    # Check size
+    sizes = list(dict.fromkeys(
+        str(s) for s in (r.get("size") for r in rows) if s is not None
+    ))
+    if sizes:
+        options.append({"name": "Size", "field": "size", "values": sizes})
 
-    return None
+    # Check unit_of_sale
+    units = list(dict.fromkeys(
+        str(u) for u in (r.get("unit_of_sale") for r in rows) if u is not None
+    ))
+    if units:
+        options.append({"name": "Unit of Sale", "field": "unit_of_sale", "values": units})
 
-
-def _get_option_value(row: Dict, option: Optional[Dict]) -> Optional[str]:
-    """Get the option value for a specific row based on the option type."""
-    if option is None:
-        return None
-    name = option["name"]
-    if name == "Color":
-        return row.get("color")
-    elif name == "Size":
-        return row.get("size")
-    elif name == "Type":
-        return row.get("title")
-    return None
+    return options
 
 
 def _format_price(value: Any) -> str:
@@ -134,35 +126,39 @@ def _format_price(value: Any) -> str:
         return "0.00"
 
 
-def _build_description(parent_row: Dict, rows: List[Dict], option: Optional[Dict]) -> str:
+def _build_description(parent_row: Dict, rows: List[Dict], options: List[Dict]) -> str:
     """Build a factual HTML description from available fields.
 
     The categorizer's AI will rewrite this into marketing copy.
     """
     title = parent_row.get("title", "Product")
-    unit_of_sale = parent_row.get("unit_of_sale", "")
     coverage = parent_row.get("approximate_product_coverage", "")
 
     parts = []
 
     # Product name and available variants
-    if option and len(option["values"]) > 1:
-        option_name = option["name"].lower()
-        values_str = ", ".join(str(v) for v in option["values"][:-1])
-        if len(option["values"]) > 1:
-            values_str += f", and {option['values'][-1]}"
-        parts.append(f"<p>{title} available in {values_str} ({option_name} options).</p>")
+    option_descriptions = []
+    for opt in options:
+        if len(opt["values"]) > 1:
+            vals = opt["values"]
+            values_str = ", ".join(str(v) for v in vals[:-1])
+            values_str += f", and {vals[-1]}"
+            option_descriptions.append(f"{values_str} ({opt['name'].lower()} options)")
+    if option_descriptions:
+        parts.append(f"<p>{title} available in {'; '.join(option_descriptions)}.</p>")
     else:
         parts.append(f"<p>{title}.</p>")
 
-    # Size info (for single-size products or parent row size)
+    # Size info (only for products where size is not an option)
+    option_fields = {opt["field"] for opt in options}
     size = parent_row.get("size")
-    if size and (option is None or option["name"] != "Size"):
+    if size and "size" not in option_fields:
         parts.append(f"<p>Size: {size}.</p>")
 
-    # Unit of sale and coverage
+    # Unit of sale and coverage (only mention unit if not an option)
     sale_coverage_parts = []
-    if unit_of_sale:
+    unit_of_sale = parent_row.get("unit_of_sale", "")
+    if unit_of_sale and "unit_of_sale" not in option_fields:
         sale_coverage_parts.append(f"Sold by the {unit_of_sale}")
     if coverage:
         sale_coverage_parts.append(f"Approximate coverage: {coverage}")
@@ -178,21 +174,45 @@ def _build_images(
     bucket: str,
     folder: str,
     status_fn: Optional[Callable],
-) -> List[Dict]:
-    """Build images array, uploading each to S3 and using public URLs."""
+) -> tuple:
+    """Build images array and SKU-to-URL mapping.
+
+    Returns (images_list, sku_to_image_url) where images_list has tagged alt text
+    and sku_to_image_url maps each variant SKU to its uploaded image URL.
+    """
     from src.s3_client import upload_image_to_s3
 
     images = []
-    seen_files = set()
+    sku_to_image_url = {}
+    seen_files = {}  # filename -> public_url
 
     for row in rows:
         image_file = row.get("image_file_name")
-        if not image_file or image_file in seen_files:
+        if not image_file:
             continue
-        seen_files.add(image_file)
+
+        sku = str(row.get("sku", ""))
+
+        # If already uploaded, reuse URL
+        if image_file in seen_files:
+            if sku:
+                sku_to_image_url[sku] = seen_files[image_file]
+            continue
 
         abs_path = os.path.join(IMAGES_DIR, image_file)
-        alt_text = row.get("title", "Product image")
+
+        # Build hashtag alt text from option fields
+        alt_parts = []
+        color = row.get("color")
+        if color:
+            alt_parts.append(f"#{color}")
+        size = row.get("size")
+        if size:
+            alt_parts.append(f"#{size}")
+        unit = row.get("unit_of_sale")
+        if unit:
+            alt_parts.append(f"#{unit}")
+        alt_text = " ".join(alt_parts) if alt_parts else row.get("title", "Product image")
 
         if not os.path.exists(abs_path):
             log_warning(
@@ -207,13 +227,16 @@ def _build_images(
                 s3_client, bucket, folder, abs_path, status_fn,
             )
             images.append({"src": public_url, "alt": alt_text})
+            seen_files[image_file] = public_url
+            if sku:
+                sku_to_image_url[sku] = public_url
         except Exception as e:
             log_error(
                 status_fn,
                 f"Failed to upload {image_file}: {e}",
             )
 
-    return images
+    return images, sku_to_image_url
 
 
 def _build_product(
@@ -226,23 +249,23 @@ def _build_product(
 ) -> Dict:
     """Build a single product dict from a group of rows."""
     parent_row = _find_parent_row(rows, parent_sku)
-    option = _determine_option(rows)
+    options = _determine_options(rows)
+
+    # Build images first to get sku-to-URL mapping for metafields
+    images, sku_to_image_url = _build_images(rows, s3_client, bucket, folder, status_fn)
 
     product = {
         "title": parent_row.get("title", ""),
-        "body_html": _build_description(parent_row, rows, option),
+        "body_html": _build_description(parent_row, rows, options),
         "vendor": parent_row.get("vendor", ""),
         "status": "ACTIVE",
     }
 
     # Options
-    if option:
+    if options:
         product["options"] = [
-            {
-                "name": option["name"],
-                "position": 1,
-                "values": [str(v) for v in option["values"]],
-            }
+            {"name": opt["name"], "position": i + 1, "values": opt["values"]}
+            for i, opt in enumerate(options)
         ]
 
     # Variants
@@ -260,15 +283,23 @@ def _build_product(
             variant["weight"] = 2000.0
             variant["weight_unit"] = "lb"
 
-        opt_val = _get_option_value(row, option)
-        if opt_val is not None:
-            variant["option1"] = str(opt_val)
+        # Assign option values from options list
+        for i, opt in enumerate(options):
+            val = row.get(opt["field"])
+            if val is not None:
+                variant[f"option{i + 1}"] = str(val)
+
+        # Add color_swatch_image metafield if variant has an uploaded image
+        sku = str(row.get("sku", ""))
+        if sku in sku_to_image_url:
+            variant["metafields"] = [
+                {"key": "color_swatch_image", "value": sku_to_image_url[sku]}
+            ]
+
         variants.append(variant)
 
     product["variants"] = variants
 
-    # Images
-    images = _build_images(rows, s3_client, bucket, folder, status_fn)
     if images:
         product["images"] = images
 
