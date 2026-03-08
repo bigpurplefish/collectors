@@ -135,6 +135,17 @@ def deduplicate_urls(urls: list[str]) -> list[str]:
     return result
 
 
+def strip_cloudflare_cdn_transform(url: str) -> str:
+    """Strip Cloudflare CDN image transform prefix to get full-resolution URL.
+
+    Converts: https://example.com/cdn-cgi/image/width%3D100%2Cheight%3D100/assets/img.png
+    To:       https://example.com/assets/img.png
+
+    Safe to call on URLs without the prefix (no-op).
+    """
+    return re.sub(r'/cdn-cgi/image/[^/]+/', '/', url)
+
+
 def normalize_image_url(
     url: Optional[str],
     base_url: str = "",
