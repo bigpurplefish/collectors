@@ -68,11 +68,28 @@ class HTMLToShopifyRichTextParser(HTMLParser):
             self.stack.append(node)
         elif tag == 'ul':
             node = {"type": "list", "listType": "unordered", "children": []}
-            self._current_parent().append(node)
+            parent = self._current_parent()
+            # If parent is a list, nest inside the last list-item (or create one)
+            if self.stack and self.stack[-1].get('type') == 'list':
+                if parent and parent[-1].get('type') == 'list-item':
+                    parent[-1]['children'].append(node)
+                else:
+                    wrapper = {"type": "list-item", "children": [node]}
+                    parent.append(wrapper)
+            else:
+                parent.append(node)
             self.stack.append(node)
         elif tag == 'ol':
             node = {"type": "list", "listType": "ordered", "children": []}
-            self._current_parent().append(node)
+            parent = self._current_parent()
+            if self.stack and self.stack[-1].get('type') == 'list':
+                if parent and parent[-1].get('type') == 'list-item':
+                    parent[-1]['children'].append(node)
+                else:
+                    wrapper = {"type": "list-item", "children": [node]}
+                    parent.append(wrapper)
+            else:
+                parent.append(node)
             self.stack.append(node)
         elif tag == 'li':
             node = {"type": "list-item", "children": []}
@@ -105,7 +122,21 @@ class HTMLToShopifyRichTextParser(HTMLParser):
             self._flush_text(text)
 
     def get_result(self) -> dict:
-        return {"type": "root", "children": self.children}
+        # Wrap orphan inline nodes (text, link) in paragraph nodes.
+        # Shopify rich_text_field only allows paragraph, heading, and list at root level.
+        fixed_children = []
+        pending_inline = []
+        for child in self.children:
+            if child['type'] in ('text', 'link'):
+                pending_inline.append(child)
+            else:
+                if pending_inline:
+                    fixed_children.append({"type": "paragraph", "children": pending_inline})
+                    pending_inline = []
+                fixed_children.append(child)
+        if pending_inline:
+            fixed_children.append({"type": "paragraph", "children": pending_inline})
+        return {"type": "root", "children": fixed_children}
 
 
 def html_to_shopify_rich_text(html: str) -> str:

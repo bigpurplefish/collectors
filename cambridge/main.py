@@ -104,6 +104,8 @@ def main():
     print(f"  Output: {output_file}")
     print(f"  Portal Username: {portal_username}")
     print(f"  Processing Mode: {cfg.get('processing_mode', 'skip')}")
+    retry_mode = "enabled" if cfg.get("retry_failures_only", False) else "disabled"
+    print(f"  Retry Failures Only: {retry_mode}")
     print()
 
     # Run processing

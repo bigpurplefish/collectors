@@ -174,6 +174,7 @@ def _build_images(
     bucket: str,
     folder: str,
     status_fn: Optional[Callable],
+    product_title: str = "",
 ) -> tuple:
     """Build images array and SKU-to-URL mapping.
 
@@ -212,7 +213,8 @@ def _build_images(
         unit = row.get("unit_of_sale")
         if unit:
             alt_parts.append(f"#{unit}")
-        alt_text = " ".join(alt_parts) if alt_parts else row.get("title", "Product image")
+        hashtags = "".join(alt_parts)  # "#3/8"#Ton" (concatenated, no spaces)
+        alt_text = f"{product_title} {hashtags}".strip() if (product_title or hashtags) else "Product image"
 
         if not os.path.exists(abs_path):
             log_warning(
@@ -252,7 +254,8 @@ def _build_product(
     options = _determine_options(rows)
 
     # Build images first to get sku-to-URL mapping for metafields
-    images, sku_to_image_url = _build_images(rows, s3_client, bucket, folder, status_fn)
+    product_title = parent_row.get("title", "")
+    images, sku_to_image_url = _build_images(rows, s3_client, bucket, folder, status_fn, product_title)
 
     product = {
         "title": parent_row.get("title", ""),
@@ -293,12 +296,25 @@ def _build_product(
         sku = str(row.get("sku", ""))
         if sku in sku_to_image_url:
             variant["metafields"] = [
-                {"key": "color_swatch_image", "value": sku_to_image_url[sku]}
+                {
+                    "namespace": "custom",
+                    "key": "color_swatch_image",
+                    "value": sku_to_image_url[sku],
+                    "type": "single_line_text_field",
+                }
             ]
 
         variants.append(variant)
 
     product["variants"] = variants
+    product["metafields"] = [
+        {
+            "namespace": "custom",
+            "key": "hide_online_price",
+            "value": "true",
+            "type": "boolean",
+        }
+    ]
 
     if images:
         product["images"] = images

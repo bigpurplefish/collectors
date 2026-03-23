@@ -192,6 +192,36 @@ def _is_valid_price(val) -> bool:
     return isinstance(val, (int, float))
 
 
+def load_failure_report(output_file: str) -> set:
+    """
+    Load the processing report file to identify failed product titles.
+
+    Args:
+        output_file: Path to the output JSON file (report path is derived from this)
+
+    Returns:
+        Set of product titles that failed in the previous run
+    """
+    report_file = output_file.replace(".json", "_report.json")
+    failed_titles = set()
+
+    if not os.path.exists(report_file):
+        return failed_titles
+
+    try:
+        with open(report_file, "r", encoding="utf-8") as f:
+            report = json.load(f)
+
+        for failure in report.get("failures", []):
+            title = failure.get("title", "")
+            if title:
+                failed_titles.add(title)
+
+        return failed_titles
+    except Exception:
+        return failed_titles
+
+
 def _first_nonempty_field(variant_records: list, field: str) -> str:
     """Scan all variant records and return the first non-empty value for field."""
     for v in variant_records:
@@ -368,6 +398,25 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                     details=f"File: {output_file}, Error: {str(e)}"
                 )
 
+        # Load failure report for retry filtering (skip mode + retry_failures_only)
+        retry_failures_only = config.get("retry_failures_only", False)
+        failed_titles = set()
+
+        if processing_mode == "skip" and retry_failures_only:
+            failed_titles = load_failure_report(output_file)
+            if failed_titles:
+                log_and_status(
+                    status_fn,
+                    msg=f"Retry mode: found {len(failed_titles)} failed products from previous run report",
+                    ui_msg=f"Retry mode: {len(failed_titles)} failed products to retry"
+                )
+            else:
+                log_and_status(
+                    status_fn,
+                    msg="Retry mode: no failed products found in report - all existing products will be skipped",
+                    ui_msg="Retry mode: no failed products to retry"
+                )
+
         # Process each product family
         # Use dictionary for easy updates and incremental saving
         products_dict = existing_products.copy()
@@ -398,13 +447,32 @@ def process_products(config: Dict[str, Any], status_fn: Optional[Callable] = Non
                 details=f"Variants={len(variant_records)}, Colors=[{colors_str}]"
             )
 
-            # Variant-level skip logic (skip mode only)
+            # Product-level skip check (retry_failures_only mode)
+            if processing_mode == "skip" and retry_failures_only and portal_title in products_dict:
+                if portal_title not in failed_titles:
+                    # Product exists in output and was NOT a failure — skip entirely
+                    log_and_status(
+                        status_fn,
+                        msg=f"[{i}/{len(product_families)}] Skipping: {portal_title} - product complete (retry mode)",
+                        ui_msg="  ⏭ Skip (complete)"
+                    )
+                    skip_count += 1
+                    continue
+                else:
+                    # Product was marked as failed — reprocess entirely
+                    log_and_status(
+                        status_fn,
+                        msg=f"[{i}/{len(product_families)}] Retrying failed product: {portal_title}",
+                        ui_msg="  🔄 Retrying (previously failed)"
+                    )
+
+            # Variant-level skip logic (skip mode only, not retry_failures_only)
             # Check each input record (variant) by color+unit combination
             existing_variants_by_color_unit = {}
             variants_to_skip = set()  # Set of (color, unit) tuples
             variants_to_process = []  # List of variant_records to process
 
-            if processing_mode == "skip" and portal_title in products_dict:
+            if processing_mode == "skip" and not retry_failures_only and portal_title in products_dict:
                 # Extract existing variants keyed by (color, unit)
                 existing_product = products_dict[portal_title]
                 existing_variants_by_color_unit = extract_existing_variants_by_color_unit(existing_product)

@@ -9,4 +9,14 @@
 |----|------|---|-------|------|
 | #2709 | 5:49 PM | 🔵 | Aggregates Processor Image Handling Analysis | ~545 |
 | #2707 | 5:48 PM | 🔵 | Aggregates Project Structure and S3 Integration Gap Analysis | ~554 |
+| #2686 | 11:01 AM | 🔵 | Weight field handling gap identified between aggregates processor and categorizer | ~511 |
+| #2679 | 9:53 AM | ✅ | Changed product description field from descriptionHtml to body_html | ~329 |
+| #2676 | 9:52 AM | ✅ | Aggregates output field renamed from descriptionHtml to body_html for universal categorizer compatibility | ~362 |
+
+### Mar 2, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #2782 | 1:34 PM | 🔵 | Product taxonomy system architecture and mulch categorization | ~499 |
+| #2774 | 12:49 PM | ⚖️ | Plan created to upgrade aggregates converter for v2 input format with multi-option variants | ~674 |
 </claude-mem-context>

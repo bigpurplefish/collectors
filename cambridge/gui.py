@@ -315,14 +315,40 @@ def build_gui():
     )
     overwrite_radio.pack(side="left")
 
+    retry_var = tb.BooleanVar(value=cfg.get("retry_failures_only", False))
+    retry_check = tb.Checkbutton(
+        mode_frame,
+        text="Retry Failed Only",
+        variable=retry_var,
+        bootstyle="info"
+    )
+    retry_check.pack(side="left", padx=(20, 0))
+
+    def _update_retry_state():
+        """Enable/disable retry checkbox based on processing mode."""
+        if mode_var.get() == "skip":
+            retry_check.configure(state="normal")
+        else:
+            retry_check.configure(state="disabled")
+
     def on_mode_change(*args):
         try:
             cfg["processing_mode"] = mode_var.get()
+            save_config(cfg)
+            _update_retry_state()
+        except Exception:
+            pass
+
+    def on_retry_change(*args):
+        try:
+            cfg["retry_failures_only"] = retry_var.get()
             save_config(cfg)
         except Exception:
             pass
 
     mode_var.trace_add("write", on_mode_change)
+    retry_var.trace_add("write", on_retry_change)
+    _update_retry_state()  # Set initial state
     current_row += 1
 
     # Start Record

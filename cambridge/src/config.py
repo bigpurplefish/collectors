@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
 
     "_PROCESSING_SETTINGS": "# Processing Options",
     "processing_mode": "skip",  # skip or overwrite
+    "retry_failures_only": False,  # When True + skip mode: only reprocess failed products from report
     "start_product": "",  # blank = start from first product
     "end_product": "",    # blank = process to last product
     "inventory_quantity": 5,  # Default inventory quantity for all products
